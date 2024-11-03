@@ -147,38 +147,36 @@ async def chat(request: ChatRequest):
             frequency_penalty=0,
             presence_penalty=0,
             stop=None,
-            stream=False,
-            extra_body={
-                "data_sources": [{
-                    "type": "azure_search",
-                    "parameters": {
-                        "filter": None,
-                        "endpoint": search_endpoint,
-                        "index_name": "ludus-trend-docs",
-                        "semantic_configuration": "azureml-default",
-                        "authentication": {
-                            "type": "api_key",
-                            "key": search_key
-                        },
-                        "embedding_dependency": {
-                            "type": "endpoint",
-                            "endpoint": embedding_endpoint,
-                            "authentication": {
-                                "type": "api_key",
-                                "key": subscription_key
-                            }
-                        },
-                        "query_type": "vector_simple_hybrid",
-                        "in_scope": True,
-                        "role_information": role_information,  # Your role information here
-                        "strictness": 3,
-                        "top_n_documents": 5
+            stream=False)       
+    ,
+        extra_body={
+        "data_sources": [{
+            "type": "azure_search",
+            "parameters": {
+                "filter": None,
+                "endpoint": search_endpoint,
+                "index_name": "ludus-trend-docs",
+                "semantic_configuration": "azureml-default",
+                "authentication": {
+                    "type": "api_key",
+                    "key": search_key
+                },
+                "embedding_dependency": {
+                    "type": "endpoint",
+                    "endpoint": embedding_endpoint,
+                    "authentication": {
+                        "type": "api_key",
+                        "key": subscription_key
                     }
-                }]
-            }
-        )
-
-        print(completion.to_json())
+                },
+                "query_type": "vector_simple_hybrid",
+                "in_scope": True,
+                "role_information": role_information,  # Your role information here
+                "strictness": 3,
+                "top_n_documents": 5
+          }
+        }]
+      }   print(completion.to_json())  
 
         return {
             "response": "Test response",
