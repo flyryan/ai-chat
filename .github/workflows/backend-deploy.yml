@@ -81,7 +81,7 @@ jobs:
       with:
         inlineScript: |
           az webapp config set --name ludus-chat-backend \
-            --resource-group rg-ryai \
+            --resource-group ludus-chat-rg \
             --always-on true
 
     - name: Verify deployment
