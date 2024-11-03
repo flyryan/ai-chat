@@ -15,10 +15,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS middleware configuration
+# Get allowed origins from environment variable or use default
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
+
+# CORS middleware with explicit origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -122,6 +126,14 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "allowed_origins": ALLOWED_ORIGINS,
+        "timestamp": datetime.now().isoformat()
+    }
 
 if __name__ == "__main__":
     import uvicorn

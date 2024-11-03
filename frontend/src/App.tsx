@@ -39,23 +39,34 @@ export default function ChatApp() {
   const ws = useRef<WebSocket | null>(null);
 
   const connectWebSocket = useCallback(() => {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      console.log('WebSocket already connected');
+      return;
+    }
+
     console.log('Connecting to WebSocket...', WS_URL);
     const wsInstance = new WebSocket(WS_URL);
     
     wsInstance.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket connected successfully');
       setWsConnected(true);
     };
 
     wsInstance.onclose = (event) => {
       console.log('WebSocket disconnected', event);
       setWsConnected(false);
-      // Attempt to reconnect after a delay
-      setTimeout(connectWebSocket, 3000);
+      ws.current = null;
+      if (!event.wasClean) {
+        console.log('Attempting to reconnect...');
+        setTimeout(connectWebSocket, 3000);
+      }
     };
 
     wsInstance.onerror = (error) => {
       console.error('WebSocket error:', error);
+      if (error instanceof ErrorEvent) {
+        console.error('Error details:', error.message);
+      }
     };
 
     wsInstance.onmessage = (event) => {
@@ -63,7 +74,8 @@ export default function ChatApp() {
       setMessages(prev => {
         const newMessages = [...prev];
         if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
-          newMessages[newMessages.length - 1].content += event.data;
+          const lastMessage = newMessages[newMessages.length - 1];
+          lastMessage.content += event.data;
         } else {
           newMessages.push({
             role: 'assistant',
@@ -86,6 +98,20 @@ export default function ChatApp() {
       }
     };
   }, [connectWebSocket]);
+
+  useEffect(() => {
+    const checkBackendHealth = async () => {
+      try {
+        const response = await fetch(`${BACKEND_URL}/health`);
+        const data = await response.json();
+        console.log('Backend health check:', data);
+      } catch (error) {
+        console.error('Backend health check failed:', error);
+      }
+    };
+
+    checkBackendHealth();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -127,20 +153,20 @@ export default function ChatApp() {
       timestamp: new Date().toISOString()
     };
 
-    setMessages(prev => [...prev, newMessage]);
-    setInput('');
-    setIsLoading(true);
+    try {
+      setMessages(prev => [...prev, newMessage]);
+      setInput('');
+      setIsLoading(true);
 
-    if (wsConnected && ws.current) {
-      console.log('Sending message via WebSocket');
-      ws.current.send(JSON.stringify({
-        messages: [...messages, newMessage],
-        max_tokens: 800,
-        temperature: 0.7
-      }));
-    } else {
-      console.log('Sending message via HTTP');
-      try {
+      if (wsConnected && ws.current?.readyState === WebSocket.OPEN) {
+        console.log('Sending message via WebSocket');
+        ws.current.send(JSON.stringify({
+          messages: [...messages, newMessage],
+          max_tokens: 800,
+          temperature: 0.7
+        }));
+      } else {
+        console.log('Sending message via HTTP');
         const response = await fetch(`${BACKEND_URL}/chat`, {
           method: 'POST',
           headers: {
@@ -153,18 +179,27 @@ export default function ChatApp() {
           }),
         });
 
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
-        
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: data.response,
           timestamp: data.timestamp
         }]);
-      } catch (error) {
-        console.error('Error sending message:', error);
       }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, there was an error processing your message. Please try again.',
+        timestamp: new Date().toISOString()
+      }]);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
