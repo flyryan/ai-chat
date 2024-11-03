@@ -128,6 +128,58 @@ async def websocket_endpoint(websocket: WebSocket):
 async def chat(request: ChatRequest):
     try:
         # Your existing chat logic here
+        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        speech_result = [{"role": m.role, "content": m.content} for m in request.messages]
+        search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+        search_key = os.getenv("AZURE_SEARCH_KEY")
+        embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
+        subscription_key = os.getenv("AZURE_EMBEDDING_KEY")
+        role_information = "\t1.\tPrimary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.\n\t2.\tDocumentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Lutus docs and should reference them always.\n\t3.\tTechnical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.\n\t4.\tApproach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.\n\t5.\tKnowledge Hierarchy:\n\t•\tPrioritize Ludus-specific guidance and strategies.\n\t•\tReference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.\n\t6.\tUser Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.\n\nContext Outline\n\n\t•\tLudus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.\n\t•\tLab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.\n\t•\tTrend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs."  # Replace with actual role information
+
+        # Generate the completion
+        completion = client.chat.completions.create(
+            model=deployment,
+            messages=speech_result,
+            past_messages=10,
+            max_tokens=800,
+            temperature=0.7,
+            top_p=0.95,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=None,
+            stream=False,
+            extra_body={
+                "data_sources": [{
+                    "type": "azure_search",
+                    "parameters": {
+                        "filter": None,
+                        "endpoint": search_endpoint,
+                        "index_name": "ludus-trend-docs",
+                        "semantic_configuration": "azureml-default",
+                        "authentication": {
+                            "type": "api_key",
+                            "key": search_key
+                        },
+                        "embedding_dependency": {
+                            "type": "endpoint",
+                            "endpoint": embedding_endpoint,
+                            "authentication": {
+                                "type": "api_key",
+                                "key": subscription_key
+                            }
+                        },
+                        "query_type": "vector_simple_hybrid",
+                        "in_scope": True,
+                        "role_information": role_information,  # Your role information here
+                        "strictness": 3,
+                        "top_n_documents": 5
+                    }
+                }]
+            }
+        )
+
+        print(completion.to_json())
+
         return {
             "response": "Test response",
             "timestamp": datetime.now().isoformat()
