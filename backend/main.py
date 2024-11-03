@@ -118,11 +118,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     dataSources=[{
                         "type": "azure_search",
                         "parameters": {
-                            "endpoint": os.getenv("AZURE_SEARCH_ENDPOINT"),
-                            "key": os.getenv("AZURE_SEARCH_KEY"),
+                            "endpoint": os.getenv("SEARCH_ENDPOINT"),
+                            "key": os.getenv("SEARCH_KEY"),
                             "indexName": "ludus-trend-docs",
-                            "roleInformation": system_prompt["content"],
-                            "filter": None,
                             "semanticConfiguration": "azureml-default",
                             "queryType": "vector_simple_hybrid",
                             "strictness": 3,
@@ -133,7 +131,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     }]
                 )
                 
-                for chunk in response:
+                # Stream the response chunks
+                async for chunk in response:
                     if chunk.choices[0].delta.content:
                         await websocket.send_text(chunk.choices[0].delta.content)
                         
@@ -146,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        if websocket.client_state == WebSocketState.CONNECTED:
+        if not websocket.client_state == WebSocketState.DISCONNECTED:
             await websocket.close(code=1001)
 
 @app.post("/chat")
