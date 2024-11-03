@@ -41,6 +41,14 @@ jobs:
         echo "gunicorn -c gunicorn.conf.py main:app" > startup.sh
         chmod +x startup.sh
 
+    - name: Configure Always On
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          az webapp config set --name ludus-chat-backend \
+            --resource-group rg-ryai \
+            --always-on true
+
     - name: Verify deployment
       run: |
         sleep 30
