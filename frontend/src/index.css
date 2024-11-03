@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* YAML-specific syntax highlighting */
+.language-yaml .token.key {
+  color: #569cd6;
+}
+
+.language-yaml .token.string {
+  color: #ce9178;
+}
+
+.language-yaml .token.number {
+  color: #b5cea8;
+}
+
+.language-yaml .token.punctuation {
+  color: #808080;
+}
+
+.language-yaml .token.boolean {
+  color: #4ec9b0;
+}
+
+/* General code block styling */
+.code-block-wrapper {
+  position: relative;
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.code-block-wrapper pre {
+  margin: 0 !important;
+  padding: 1rem !important;
+  background-color: #1e1e1e !important;
+  overflow-x: auto;
+  max-height: 600px;
+}
+
+.code-block-wrapper code {
+  background-color: transparent !important;
+  padding: 0 !important;
+  font-size: 0.875em !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  line-height: 1.5;
+}
+
+/* Improved inline code styling */
+.prose code:not([class*="language-"]) {
+  color: white !important;
+  background-color: rgba(75, 85, 99, 0.8) !important;
+  padding: 0.2em 0.4em !important;
+  border-radius: 0.25rem !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  font-size: 0.875em !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  white-space: nowrap !important;
+}
+
+/* Override the default behavior of adding backticks before and after code elements */
+.prose code::before,
+.prose code::after {
+  content: none !important;
+}
+
+/* Assistant message container spacing */
+.justify-start > div {
+  margin-top: 1rem !important;
+}
+
+/* User message container spacing */
+.justify-end > div {
+  margin-top: 2rem !important;
+}
+
+/* Improved scrollbars for code blocks */
+.code-block-wrapper pre::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

@@ -1,0 +1,124 @@
+name: Deploy Backend to Azure App Service
+
+on:
+  push:
+    branches: [ main, release-prep ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Configure App Settings
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          # Create a temporary JSON file with all settings
+          echo '{
+            "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true",
+            "DOCKER_ENABLE_CI": "true",
+            "APP_NAME": "${{ secrets.APP_NAME }}",
+            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
+            "OPENAI_API_BASE": "${{ secrets.OPENAI_API_BASE }}",
+            "OPENAI_API_VERSION": "${{ secrets.OPENAI_API_VERSION }}",
+            "OPENAI_DEPLOYMENT_NAME": "${{ secrets.OPENAI_DEPLOYMENT_NAME }}",
+            "VECTOR_SEARCH_ENABLED": "${{ secrets.VECTOR_SEARCH_ENABLED }}",
+            "VECTOR_SEARCH_ENDPOINT": "${{ secrets.VECTOR_SEARCH_ENDPOINT }}",
+            "VECTOR_SEARCH_KEY": "${{ secrets.VECTOR_SEARCH_KEY }}",
+            "VECTOR_SEARCH_INDEX": "${{ secrets.VECTOR_SEARCH_INDEX }}",
+            "CORS_ORIGINS": "https://*.azurestaticapps.net,${{ secrets.CORS_ORIGINS }}",
+            "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}"
+          }' > appsettings.json
+
+          # Add CORS configuration to web app
+          az webapp cors add \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --allowed-origins "https://*.azurestaticapps.net" "https://salmon-grass-06d76a510.5.azurestaticapps.net"
+
+          # Update app settings
+          az webapp config appsettings set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --settings @appsettings.json
+
+          # Ensure container settings are applied
+          az webapp config set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --linux-fx-version "PYTHON|3.9" \
+            --startup-file "gunicorn main:app --config gunicorn.conf.py"
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      id: deploy
+      with:
+        app-name: ${{ secrets.WEBAPP_NAME }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
+        package: backend
+
+    - name: Handle deployment failure
+      if: failure() && steps.deploy.outcome == 'failure' 
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          echo "Deployment failed, checking logs..."
+          az webapp log download \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }}
+
+    # - name: Check application logs
+    #   uses: Azure/cli@v1
+    #   with:
+    #     inlineScript: |
+    #       echo "Fetching application logs..."
+    #       az webapp log tail \
+    #         --name ${{ secrets.WEBAPP_NAME }} \
+    #         --resource-group ${{ secrets.RESOURCE_GROUP }}
+
+    - name: Verify health endpoint
+      run: |
+        echo "Checking health endpoint..."
+        MAX_RETRIES=5
+        RETRY_DELAY=10
+        endpoint="https://${{ secrets.WEBAPP_NAME }}.azurewebsites.net/health"
+        
+        for i in $(seq 1 $MAX_RETRIES); do
+          echo "Attempt $i of $MAX_RETRIES..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" $endpoint)
+          
+          if [ "$response" = "200" ]; then
+            echo "Health check succeeded!"
+            exit 0
+          else
+            echo "Health check failed with status $response"
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "Retrying in $RETRY_DELAY seconds..."
+              sleep $RETRY_DELAY
+            fi
+          fi
+        done
+        
+        echo "Health check failed after $MAX_RETRIES attempts"
+        exit 1
