@@ -88,12 +88,27 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
-                # Process the message and send response
-                # Add your message handling logic here
-                await websocket.send_text("Message received")
+                request_data = json.loads(data)
+                chat_request = ChatRequest(**request_data)
+                
+                # Use your existing AI processing logic
+                client = AzureOpenAI()
+                response = client.chat.completions.create(
+                    model="your-model-deployment",
+                    messages=[{"role": m.role, "content": m.content} for m in chat_request.messages],
+                    max_tokens=chat_request.max_tokens,
+                    temperature=chat_request.temperature,
+                    stream=True  # Enable streaming
+                )
+                
+                # Stream the response
+                for chunk in response:
+                    if chunk.choices[0].delta.content:
+                        await websocket.send_text(chunk.choices[0].delta.content)
+                
             except Exception as e:
                 logger.error(f"Error processing WebSocket message: {e}")
-                await websocket.send_text(f"Error processing message: {str(e)}")
+                await websocket.send_text(f"Error: {str(e)}")
                 
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}")
