@@ -34,3 +34,14 @@ jobs:
 
     - name: Set SCM_DO_BUILD_DURING_DEPLOYMENT
       run: echo "[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT=true" > backend/.deployment
+
+    - name: Create startup command
+      run: |
+        cd backend
+        echo "gunicorn -c gunicorn.conf.py main:app" > startup.sh
+        chmod +x startup.sh
+
+    - name: Verify deployment
+      run: |
+        sleep 30
+        curl -f https://ludus-chat-backend.azurewebsites.net/health || exit 1
