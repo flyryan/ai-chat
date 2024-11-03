@@ -4,6 +4,9 @@ import {
   ListOrdered, Terminal 
 } from 'lucide-react';
 
+const BACKEND_URL = process.env.REACT_APP_API_URL || 'https://ludus-chat-backend.azurewebsites.net';
+const WS_URL = process.env.REACT_APP_WS_URL || 'wss://ludus-chat-backend.azurewebsites.net/ws';
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -159,18 +162,26 @@ export default function ChatApp() {
   };
 
   const connectWebSocket = useCallback(() => {
-    ws.current = new WebSocket('ws://localhost:8000/ws');
+    console.log('Connecting to WebSocket...', WS_URL);
+    ws.current = new WebSocket(WS_URL);
     
     ws.current.onopen = () => {
+      console.log('WebSocket connected');
       setWsConnected(true);
     };
 
     ws.current.onclose = () => {
+      console.log('WebSocket disconnected');
       setWsConnected(false);
       setTimeout(connectWebSocket, 3000);
     };
 
+    ws.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
     ws.current.onmessage = (event) => {
+      console.log('WebSocket message received:', event.data);
       const data = event.data;
       setMessages(prev => {
         const newMessages = [...prev];
@@ -263,14 +274,16 @@ export default function ChatApp() {
     setIsLoading(true);
 
     if (wsConnected && ws.current) {
+      console.log('Sending message via WebSocket');
       ws.current.send(JSON.stringify({
         messages: [...messages, newMessage],
         max_tokens: 800,
         temperature: 0.7
       }));
     } else {
+      console.log('Sending message via HTTP');
       try {
-        const response = await fetch('http://localhost:8000/chat', {
+        const response = await fetch(`${BACKEND_URL}/chat`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -290,7 +303,7 @@ export default function ChatApp() {
           timestamp: data.timestamp
         }]);
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Error sending message:', error);
       }
     }
     setIsLoading(false);
