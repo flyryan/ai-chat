@@ -16,24 +16,49 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # Get frontend URL from environment variable or use default
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://salmon-grass-06d76a510.5.azurestaticapps.net")
-ADDITIONAL_ORIGINS = os.getenv("ADDITIONAL_ORIGINS", "").split(",")
+FRONTEND_URL = "https://salmon-grass-06d76a510.5.azurestaticapps.net"
+FRONTEND_URLS = [
+    FRONTEND_URL,
+    "https://salmon-grass-06d76a5.restaticapps.net",
+    "https://salmon-grass-06d76a510.5.azurestaticapps.net",
+    # Add variations without https://
+    "salmon-grass-06d76a510.5.azurestaticapps.net",
+    "salmon-grass-06d76a5.restaticapps.net",
+    # Add www variations
+    "www.salmon-grass-06d76a510.5.azurestaticapps.net",
+    "www.salmon-grass-06d76a5.restaticapps.net",
+]
 
-# Combine all allowed origins
-ALLOWED_ORIGINS = [FRONTEND_URL] + [origin for origin in ADDITIONAL_ORIGINS if origin]
-if "*" in ADDITIONAL_ORIGINS:
-    ALLOWED_ORIGINS = ["*"]
+# Add both http and https variants
+FRONTEND_URLS = [
+    f"https://{url}" if not url.startswith('http') else url
+    for url in FRONTEND_URLS
+] + [
+    f"http://{url}" if not url.startswith('http') else url.replace('https://', 'http://')
+    for url in FRONTEND_URLS
+]
 
-logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
+# Add localhost for development
+if os.getenv("ENVIRONMENT") == "development":
+    FRONTEND_URLS.extend([
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5000"
+    ])
+
+# Remove duplicates while preserving order
+FRONTEND_URLS = list(dict.fromkeys(FRONTEND_URLS))
+
+logger.info(f"Configured FRONTEND_URLS: {FRONTEND_URLS}")
 
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=FRONTEND_URLS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
 class ChatMessage(BaseModel):
@@ -50,7 +75,7 @@ class ChatRequest(BaseModel):
 async def health():
     return {
         "status": "healthy",
-        "allowed_origins": ALLOWED_ORIGINS,
+        "allowed_origins": FRONTEND_URLS,
         "timestamp": datetime.now().isoformat()
     }
 

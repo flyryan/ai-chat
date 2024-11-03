@@ -36,6 +36,7 @@ export default function ChatApp() {
   const [wsConnected, setWsConnected] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [useHttpFallback, setUseHttpFallback] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ws = useRef<WebSocket | null>(null);
@@ -121,8 +122,32 @@ export default function ChatApp() {
     }
   }, [reconnectAttempt]);
 
+  const sendMessageHttp = async (requestBody: any) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important for CORS
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('HTTP request failed:', error);
+      throw error;
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim()) return;
+    setError(null);
 
     const newMessage: Message = {
       role: 'user',
@@ -150,19 +175,7 @@ export default function ChatApp() {
         ws.current.send(JSON.stringify(requestBody));
       } else {
         console.log('Sending message via HTTP');
-        const response = await fetch(`${BACKEND_URL}/chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await sendMessageHttp(requestBody);
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: data.response,
@@ -171,11 +184,9 @@ export default function ChatApp() {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, there was an error processing your message. Please try again.',
-        timestamp: new Date().toISOString()
-      }]);
+      setError('Failed to send message. Please try again.');
+      // Remove the user's message since it failed to send
+      setMessages(prev => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
     }
@@ -237,6 +248,11 @@ export default function ChatApp() {
            reconnectAttempt > 0 ? `Disconnected (Reconnecting... Attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})` :
            'Disconnected'}
         </div>
+        {error && (
+          <div className="mt-2 text-sm text-red-600">
+            {error}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
