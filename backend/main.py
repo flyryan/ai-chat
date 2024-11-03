@@ -8,6 +8,10 @@ import json
 from openai import AzureOpenAI
 from datetime import datetime
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +75,13 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = 800
     temperature: Optional[float] = 0.7
 
+# Initialize Azure OpenAI client with proper configuration
+client = AzureOpenAI(
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2023-05-15",
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+)
+
 @app.get("/health")
 async def health():
     return {
@@ -91,10 +102,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 request_data = json.loads(data)
                 chat_request = ChatRequest(**request_data)
                 
-                # Use your existing AI processing logic
-                client = AzureOpenAI()
                 response = client.chat.completions.create(
-                    model="your-model-deployment",
+                    model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
                     messages=[{"role": m.role, "content": m.content} for m in chat_request.messages],
                     max_tokens=chat_request.max_tokens,
                     temperature=chat_request.temperature,
