@@ -4,16 +4,37 @@ import {
   ListOrdered, Terminal 
 } from 'lucide-react';
 
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+interface CodeBlockProps {
+  language?: string;
+  children: string;
+}
+
+interface MessageContentProps {
+  content: string;
+}
+
+interface FormatButtonProps {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+}
+
 export default function ChatApp() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
-  const messagesEndRef = useRef(null);
-  const textareaRef = useRef(null);
-  const ws = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const ws = useRef<WebSocket | null>(null);
 
-  const CodeBlock = ({ language, children }) => {
+  const CodeBlock: React.FC<CodeBlockProps> = ({ language = 'text', children }) => {
     const [copied, setCopied] = useState(false);
 
     const copyCode = () => {
@@ -44,13 +65,19 @@ export default function ChatApp() {
     );
   };
 
-  const MessageContent = ({ content }) => {
-    const parseContent = (text) => {
-      const segments = [];
+  const MessageContent: React.FC<MessageContentProps> = ({ content }) => {
+    interface Segment {
+      type: 'text' | 'code';
+      content: string;
+      language?: string;
+    }
+
+    const parseContent = (text: string): Segment[] => {
+      const segments: Segment[] = [];
       let currentIndex = 0;
       
       const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-      let match;
+      let match: RegExpExecArray | null;
       
       while ((match = codeBlockRegex.exec(text)) !== null) {
         if (match.index > currentIndex) {
@@ -79,7 +106,7 @@ export default function ChatApp() {
       return segments;
     };
 
-    const formatText = (text) => {
+    const formatText = (text: string): string => {
       text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
       text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-gray-200 px-1 rounded">$1</code>');
@@ -116,7 +143,7 @@ export default function ChatApp() {
     );
   };
 
-  const FormatButton = ({ icon: Icon, label, onClick }) => (
+  const FormatButton: React.FC<FormatButtonProps> = ({ icon: Icon, label, onClick }) => (
     <button
       onClick={onClick}
       className="p-2 rounded hover:bg-gray-100 flex items-center gap-1 text-gray-700"
@@ -174,7 +201,7 @@ export default function ChatApp() {
     };
   };
 
-  const formatText = (formatType) => {
+  const formatText = (formatType: string) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -225,7 +252,7 @@ export default function ChatApp() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const newMessage = {
+    const newMessage: Message = {
       role: 'user',
       content: input,
       timestamp: new Date().toISOString()
@@ -235,7 +262,7 @@ export default function ChatApp() {
     setInput('');
     setIsLoading(true);
 
-    if (wsConnected) {
+    if (wsConnected && ws.current) {
       ws.current.send(JSON.stringify({
         messages: [...messages, newMessage],
         max_tokens: 800,
