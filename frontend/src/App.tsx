@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Send, Loader, Copy, Check, Bold, Italic, Code, List, 
   ListOrdered, Terminal 
@@ -158,20 +158,7 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
-    };
-  }, []);
-
-  const connectWebSocket = () => {
+  const connectWebSocket = useCallback(() => {
     ws.current = new WebSocket('ws://localhost:8000/ws');
     
     ws.current.onopen = () => {
@@ -199,7 +186,20 @@ export default function ChatApp() {
         return newMessages;
       });
     };
-  };
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    connectWebSocket();
+    return () => {
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, [connectWebSocket]);
 
   const formatText = (formatType: string) => {
     const textarea = textareaRef.current;
