@@ -4,120 +4,6 @@ import {
   ListOrdered, Terminal 
 } from 'lucide-react';
 
-const CodeBlock = ({ language, children }) => {
-  const [copied, setCopied] = useState(false);
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(children);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="relative rounded-lg overflow-hidden my-2 font-mono">
-      <div className="bg-gray-800 text-gray-200 px-4 py-1 text-sm flex justify-between items-center">
-        <span>{language}</span>
-        <button
-          onClick={copyCode}
-          className="p-1 rounded hover:bg-gray-700 transition-colors"
-        >
-          {copied ? (
-            <Check className="w-4 h-4 text-green-400" />
-          ) : (
-            <Copy className="w-4 h-4" />
-          )}
-        </button>
-      </div>
-      <pre className="bg-gray-900 text-gray-100 p-4 overflow-x-auto">
-        <code>{children}</code>
-      </pre>
-    </div>
-  );
-};
-
-const MessageContent = ({ content }) => {
-  const parseContent = (text) => {
-    const segments = [];
-    let currentIndex = 0;
-    
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    let match;
-    
-    while ((match = codeBlockRegex.exec(text)) !== null) {
-      if (match.index > currentIndex) {
-        segments.push({
-          type: 'text',
-          content: text.slice(currentIndex, match.index)
-        });
-      }
-      
-      segments.push({
-        type: 'code',
-        language: match[1] || 'text',
-        content: match[2].trim()
-      });
-      
-      currentIndex = match.index + match[0].length;
-    }
-    
-    if (currentIndex < text.length) {
-      segments.push({
-        type: 'text',
-        content: text.slice(currentIndex)
-      });
-    }
-    
-    return segments;
-  };
-
-  const formatText = (text) => {
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-gray-200 px-1 rounded">$1</code>');
-    text = text.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
-    text = text.replace(/^\d+\. (.+)$/gm, '<li class="ml-4">$1</li>');
-    return text;
-  };
-
-  const segments = parseContent(content);
-
-  return (
-    <div className="space-y-2">
-      {segments.map((segment, index) => {
-        if (segment.type === 'code') {
-          return (
-            <CodeBlock key={index} language={segment.language}>
-              {segment.content}
-            </CodeBlock>
-          );
-        }
-
-        const formattedHtml = formatText(segment.content);
-        return (
-          <div 
-            key={index} 
-            className="prose prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ 
-              __html: formattedHtml
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-};
-
-const FormatButton = ({ icon: Icon, label, onClick }) => (
-  <button
-    onClick={onClick}
-    className="p-2 rounded hover:bg-gray-100 flex items-center gap-1 text-gray-700"
-    title={label}
-  >
-    <Icon className="w-4 h-4" />
-    <span className="text-sm hidden sm:inline">{label}</span>
-  </button>
-);
-
 export default function ChatApp() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -126,6 +12,120 @@ export default function ChatApp() {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const ws = useRef(null);
+
+  const CodeBlock = ({ language, children }) => {
+    const [copied, setCopied] = useState(false);
+
+    const copyCode = () => {
+      navigator.clipboard.writeText(children);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+      <div className="relative rounded-lg overflow-hidden my-2 font-mono">
+        <div className="bg-gray-800 text-gray-200 px-4 py-1 text-sm flex justify-between items-center">
+          <span>{language}</span>
+          <button
+            onClick={copyCode}
+            className="p-1 rounded hover:bg-gray-700 transition-colors"
+          >
+            {copied ? (
+              <Check className="w-4 h-4 text-green-400" />
+            ) : (
+              <Copy className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+        <pre className="bg-gray-900 text-gray-100 p-4 overflow-x-auto">
+          <code>{children}</code>
+        </pre>
+      </div>
+    );
+  };
+
+  const MessageContent = ({ content }) => {
+    const parseContent = (text) => {
+      const segments = [];
+      let currentIndex = 0;
+      
+      const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+      let match;
+      
+      while ((match = codeBlockRegex.exec(text)) !== null) {
+        if (match.index > currentIndex) {
+          segments.push({
+            type: 'text',
+            content: text.slice(currentIndex, match.index)
+          });
+        }
+        
+        segments.push({
+          type: 'code',
+          language: match[1] || 'text',
+          content: match[2].trim()
+        });
+        
+        currentIndex = match.index + match[0].length;
+      }
+      
+      if (currentIndex < text.length) {
+        segments.push({
+          type: 'text',
+          content: text.slice(currentIndex)
+        });
+      }
+      
+      return segments;
+    };
+
+    const formatText = (text) => {
+      text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-gray-200 px-1 rounded">$1</code>');
+      text = text.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
+      text = text.replace(/^\d+\. (.+)$/gm, '<li class="ml-4">$1</li>');
+      return text;
+    };
+
+    const segments = parseContent(content);
+
+    return (
+      <div className="space-y-2">
+        {segments.map((segment, index) => {
+          if (segment.type === 'code') {
+            return (
+              <CodeBlock key={index} language={segment.language}>
+                {segment.content}
+              </CodeBlock>
+            );
+          }
+
+          const formattedHtml = formatText(segment.content);
+          return (
+            <div 
+              key={index} 
+              className="prose prose-invert max-w-none"
+              dangerouslySetInnerHTML={{ 
+                __html: formattedHtml
+              }}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
+  const FormatButton = ({ icon: Icon, label, onClick }) => (
+    <button
+      onClick={onClick}
+      className="p-2 rounded hover:bg-gray-100 flex items-center gap-1 text-gray-700"
+      title={label}
+    >
+      <Icon className="w-4 h-4" />
+      <span className="text-sm hidden sm:inline">{label}</span>
+    </button>
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
