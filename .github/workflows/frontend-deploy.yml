@@ -1,0 +1,55 @@
+name: Deploy Frontend to Azure Static Web Apps
+
+on:
+  push:
+    branches: [ main, release-prep ]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+        
+    - name: Clear npm cache
+      run: |
+        cd frontend
+        rm -rf node_modules
+        rm -f package-lock.json
+        npm cache clean --force
+        
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm install
+        
+    - name: Build
+      run: |
+        cd frontend
+        CI=false npm run build
+      env:
+        REACT_APP_APP_NAME: ${{ secrets.APP_NAME }}
+        REACT_APP_API_URL: ${{ secrets.API_URL }}
+        REACT_APP_WS_URL: ${{ secrets.WS_URL }}
+        REACT_APP_MAX_RECONNECT_ATTEMPTS: ${{ secrets.MAX_RECONNECT_ATTEMPTS }}
+        REACT_APP_DEFAULT_MAX_TOKENS: ${{ secrets.DEFAULT_MAX_TOKENS }}
+        REACT_APP_DEFAULT_TEMPERATURE: ${{ secrets.DEFAULT_TEMPERATURE }}
+        REACT_APP_MESSAGE_HISTORY_LIMIT: ${{ secrets.MESSAGE_HISTORY_LIMIT }}
+        
+    - name: Deploy
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        action: "upload"
+        app_location: "frontend/build"
+        skip_app_build: true
+        skip_api_build: true
