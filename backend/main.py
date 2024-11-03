@@ -15,19 +15,20 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS middleware
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Environment variables
-ENDPOINT = os.getenv("ENDPOINT_URL")
-DEPLOYMENT = os.getenv("DEPLOYMENT_NAME")
-SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT")
+ENDPOINT = os.getenv("ENDPOINT_URL", "https://ai-trendgpt898002997326.openai.azure.com/")
+DEPLOYMENT = os.getenv("DEPLOYMENT_NAME", "TrendGPT")
+SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT", "https://trendgpt898002997326.search.windows.net")
 SEARCH_KEY = os.getenv("SEARCH_KEY")
 SUBSCRIPTION_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 
@@ -47,66 +48,6 @@ class ChatRequest(BaseModel):
     messages: List[Message]
     max_tokens: int = 800
     temperature: float = 0.7
-    top_p: float = 0.95
-    frequency_penalty: float = 0
-    presence_penalty: float = 0
-
-@app.get("/")
-async def root():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    try:
-        logger.info("Received chat request")
-        # Convert messages to format expected by Azure OpenAI
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-        
-        completion = client.chat.completions.create(
-            model=DEPLOYMENT,
-            messages=messages,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            frequency_penalty=request.frequency_penalty,
-            presence_penalty=request.presence_penalty,
-            stream=False,
-            extra_body={
-                "data_sources": [{
-                    "type": "azure_search",
-                    "parameters": {
-                        "endpoint": SEARCH_ENDPOINT,
-                        "index_name": "ludus-trend-docs",
-                        "semantic_configuration": "azureml-default",
-                        "authentication": {
-                            "type": "api_key",
-                            "key": SEARCH_KEY
-                        },
-                        "embedding_dependency": {
-                            "type": "endpoint",
-                            "endpoint": f"{ENDPOINT}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
-                            "authentication": {
-                                "type": "api_key",
-                                "key": SUBSCRIPTION_KEY
-                            }
-                        },
-                        "query_type": "vector_simple_hybrid",
-                        "in_scope": True,
-                        "strictness": 3,
-                        "top_n_documents": 5
-                    }
-                }]
-            }
-        )
-        
-        return {
-            "response": completion.choices[0].message.content,
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -118,10 +59,10 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 # Receive and parse the message
                 data = await websocket.receive_text()
-                request_data = json.loads(data)
                 logger.info("Received WebSocket message")
+                request_data = json.loads(data)
                 
-                # Process the request similar to the HTTP endpoint
+                # Process the request
                 messages = request_data.get("messages", [])
                 messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
                 
@@ -164,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 for chunk in completion:
                     if chunk.choices[0].delta.content:
                         await websocket.send_text(chunk.choices[0].delta.content)
-                        
+                
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error: {str(e)}")
                 await websocket.send_text(f"Error: Invalid JSON format - {str(e)}")
@@ -178,16 +119,9 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket.client_state.value:
             await websocket.close()
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Application starting up...")
-    # Verify environment variables
-    required_vars = ["ENDPOINT_URL", "DEPLOYMENT_NAME", "SEARCH_ENDPOINT", "SEARCH_KEY", "AZURE_OPENAI_API_KEY"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        raise Exception(f"Missing required environment variables: {', '.join(missing_vars)}")
-    logger.info("All required environment variables are set")
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 if __name__ == "__main__":
     import uvicorn
