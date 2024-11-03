@@ -31,3 +31,6 @@ jobs:
         app-name: 'ludus-chat-backend'
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
         package: backend
+
+    - name: Set SCM_DO_BUILD_DURING_DEPLOYMENT
+      run: echo "[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT=true" > backend/.deployment
