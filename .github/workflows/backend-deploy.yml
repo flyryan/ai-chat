@@ -44,6 +44,17 @@ jobs:
             --resource-group ludus-chat-rg \
             --always-on true
 
+    - name: Configure App Settings
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          az webapp config appsettings set --name ludus-chat-backend \
+            --resource-group ludus-chat-rg \
+            --settings \
+            AZURE_OPENAI_API_KEY="${{ secrets.AZURE_OPENAI_API_KEY }}" \
+            AZURE_OPENAI_ENDPOINT="https://ai-trendgpt898002997326.openai.azure.com/" \
+            AZURE_OPENAI_DEPLOYMENT_NAME="TrendGPT"
+
     - name: Create startup command
       run: |
         cd backend
