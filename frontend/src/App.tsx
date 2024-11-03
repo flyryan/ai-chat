@@ -5,6 +5,7 @@ import {
 
 const BACKEND_URL = process.env.REACT_APP_API_URL || 'https://ludus-chat-backend.azurewebsites.net';
 const WS_URL = process.env.REACT_APP_WS_URL || 'wss://ludus-chat-backend.azurewebsites.net/ws';
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,34 +35,38 @@ export default function ChatApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [useHttpFallback, setUseHttpFallback] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   const connectWebSocket = useCallback(() => {
-    // Clear any existing reconnection timeout
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    // Don't create a new connection if one already exists and is open
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected');
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      console.log('Max reconnection attempts reached, switching to HTTP fallback');
+      setUseHttpFallback(true);
+      setWsConnected(false);
       return;
     }
 
-    // Maximum number of reconnection attempts
-    const MAX_RECONNECT_ATTEMPTS = 5;
-    
+    if (ws.current) {
+      ws.current.close();
+      ws.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = undefined;
+    }
+
     try {
-      console.log('Connecting to WebSocket...', WS_URL);
+      console.log(`Connecting to WebSocket... Attempt ${reconnectAttempt + 1}/${MAX_RECONNECT_ATTEMPTS}`);
       const wsInstance = new WebSocket(WS_URL);
       
       wsInstance.onopen = () => {
         console.log('WebSocket connected successfully');
         setWsConnected(true);
-        setReconnectAttempt(0); // Reset reconnection attempts on successful connection
+        setUseHttpFallback(false);
+        setReconnectAttempt(0);
       };
 
       wsInstance.onclose = (event) => {
@@ -69,15 +74,15 @@ export default function ChatApp() {
         setWsConnected(false);
         ws.current = null;
 
-        // Only attempt reconnection if not intentionally closed and within max attempts
         if (!event.wasClean && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
           const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
-          console.log(`Attempting to reconnect in ${backoffDelay}ms... (Attempt ${reconnectAttempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+          console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
           
-          reconnectTimeoutRef.current = setTimeout(() => {
-            setReconnectAttempt(prev => prev + 1);
-            connectWebSocket();
-          }, backoffDelay);
+          setReconnectAttempt(prev => prev + 1);
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
+        } else {
+          console.log('Switching to HTTP fallback mode');
+          setUseHttpFallback(true);
         }
       };
 
@@ -91,7 +96,9 @@ export default function ChatApp() {
           setMessages(prev => {
             const newMessages = [...prev];
             if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
-              newMessages[newMessages.length - 1].content += event.data;
+              const lastMessage = { ...newMessages[newMessages.length - 1] };
+              lastMessage.content += event.data;
+              newMessages[newMessages.length - 1] = lastMessage;
             } else {
               newMessages.push({
                 role: 'assistant',
@@ -110,51 +117,9 @@ export default function ChatApp() {
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
       setWsConnected(false);
+      setUseHttpFallback(true);
     }
   }, [reconnectAttempt]);
-
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (ws.current) {
-        ws.current.close();
-      }
-    };
-  }, [connectWebSocket]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const formatText = (formatType: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = input.substring(start, end);
-    let formattedText = '';
-
-    switch (formatType) {
-      case 'bold':
-        formattedText = `**${selectedText}**`;
-        break;
-      case 'italic':
-        formattedText = `*${selectedText}*`;
-        break;
-      case 'code':
-        formattedText = `\`${selectedText}\``;
-        break;
-      default:
-        return;
-    }
-
-    const newText = input.substring(0, start) + formattedText + input.substring(end);
-    setInput(newText);
-  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -180,7 +145,7 @@ export default function ChatApp() {
         temperature: 0.7
       };
 
-      if (wsConnected && ws.current?.readyState === WebSocket.OPEN) {
+      if (!useHttpFallback && wsConnected && ws.current?.readyState === WebSocket.OPEN) {
         console.log('Sending message via WebSocket');
         ws.current.send(JSON.stringify(requestBody));
       } else {
@@ -216,14 +181,61 @@ export default function ChatApp() {
     }
   };
 
+  useEffect(() => {
+    if (!useHttpFallback) {
+      connectWebSocket();
+    }
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (ws.current) {
+        ws.current.close();
+      }
+    };
+  }, [connectWebSocket, useHttpFallback]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const formatText = (formatType: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = input.substring(start, end);
+    let formattedText = '';
+
+    switch (formatType) {
+      case 'bold':
+        formattedText = `**${selectedText}**`;
+        break;
+      case 'italic':
+        formattedText = `*${selectedText}*`;
+        break;
+      case 'code':
+        formattedText = `\`${selectedText}\``;
+        break;
+      default:
+        return;
+    }
+
+    const newText = input.substring(0, start) + formattedText + input.substring(end);
+    setInput(newText);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <div className="p-4 bg-white shadow-sm">
         <h1 className="text-2xl font-bold text-gray-800">Ludus Chat Assistant</h1>
         <div className="text-sm text-gray-500 flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          {wsConnected ? 'Connected' : 'Disconnected'}
-          {reconnectAttempt > 0 && !wsConnected && ` (Reconnecting... Attempt ${reconnectAttempt})`}
+          {useHttpFallback ? 'Using HTTP Mode' : 
+           wsConnected ? 'Connected' : 
+           reconnectAttempt > 0 ? `Disconnected (Reconnecting... Attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})` :
+           'Disconnected'}
         </div>
       </div>
 
