@@ -99,12 +99,10 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 data = await websocket.receive_text()
-                logger.info(f"Received WebSocket message: {data[:100]}...")  # Log first 100 chars
+                logger.info(f"Received WebSocket message: {data[:100]}...")
                 
                 request_data = json.loads(data)
                 chat_request = ChatRequest(**request_data)
-                
-                # Log successful parsing
                 logger.info("Successfully parsed chat request")
                 
                 system_prompt = {
@@ -123,7 +121,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         stream=True
                     )
                     
-                    async for chunk in response:
+                    # Handle streaming response correctly
+                    for chunk in response:
                         if chunk.choices[0].delta.content:
                             await websocket.send_text(chunk.choices[0].delta.content)
                             
