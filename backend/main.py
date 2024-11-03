@@ -92,17 +92,21 @@ async def health():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # Keep track of active connections
     try:
         await websocket.accept()
+        logger.info("WebSocket connection accepted")
         
         while True:
             try:
                 data = await websocket.receive_text()
+                logger.info(f"Received WebSocket message: {data[:100]}...")  # Log first 100 chars
+                
                 request_data = json.loads(data)
                 chat_request = ChatRequest(**request_data)
                 
-                # Process message and send response
+                # Log successful parsing
+                logger.info("Successfully parsed chat request")
+                
                 system_prompt = {
                     "role": "system",
                     "content": "\t1.\tPrimary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.\n\t2.\tDocumentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Lutus docs and should reference them always.\n\t3.\tTechnical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.\n\t4.\tApproach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.\n\t5.\tKnowledge Hierarchy:\n\t•\tPrioritize Ludus-specific guidance and strategies.\n\t•\tReference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.\n\t6.\tUser Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.\n\nContext Outline\n\n\t•\tLudus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.\n\t•\tLab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.\n\t•\tTrend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs."
@@ -110,28 +114,34 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 messages = [system_prompt] + [{"role": m.role, "content": m.content} for m in chat_request.messages]
                 
-                response = client.chat.completions.create(
-                    model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
-                    messages=messages,
-                    max_tokens=chat_request.max_tokens,
-                    temperature=chat_request.temperature,
-                    stream=True
-                )
-
-                async for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        await websocket.send_text(chunk.choices[0].delta.content)
-                        
-            except json.JSONDecodeError:
-                await websocket.send_text("Invalid JSON")
+                try:
+                    response = client.chat.completions.create(
+                        model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                        messages=messages,
+                        max_tokens=chat_request.max_tokens,
+                        temperature=chat_request.temperature,
+                        stream=True
+                    )
+                    
+                    async for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            await websocket.send_text(chunk.choices[0].delta.content)
+                            
+                except Exception as e:
+                    logger.error(f"Error in OpenAI API call: {str(e)}")
+                    await websocket.send_text(f"Error: {str(e)}")
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {str(e)}")
+                await websocket.send_text("Invalid JSON format")
             except Exception as e:
-                logger.error(f"Error processing message: {e}")
+                logger.error(f"Error processing message: {str(e)}")
                 await websocket.send_text(f"Error: {str(e)}")
                 
     except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
+        logger.info("Client disconnected normally")
     except Exception as e:
-        logger.error(f"Error in websocket connection: {e}")
+        logger.error(f"WebSocket connection error: {str(e)}")
 
 @app.post("/chat")
 async def chat(request: ChatRequest):

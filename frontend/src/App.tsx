@@ -71,19 +71,40 @@ export default function ChatApp() {
       };
 
       wsInstance.onclose = (event) => {
-        console.log('WebSocket disconnected', event);
+        console.log('WebSocket disconnected', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+          timestamp: new Date().toISOString()
+        });
+        
         setWsConnected(false);
         ws.current = null;
-
+    
+        // Log specific close codes
+        switch (event.code) {
+            case 1000:
+                console.log("Normal closure");
+                break;
+            case 1006:
+                console.log("Abnormal closure - potential server issue or network problem");
+                break;
+            case 1015:
+                console.log("TLS handshake error");
+                break;
+            default:
+                console.log(`Unknown close code: ${event.code}`);
+        }
+    
         if (!event.wasClean && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
-          const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
-          console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
-          
-          setReconnectAttempt(prev => prev + 1);
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
+            const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
+            console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
+            
+            setReconnectAttempt(prev => prev + 1);
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
         } else {
-          console.log('Switching to HTTP fallback mode');
-          setUseHttpFallback(true);
+            console.log('Switching to HTTP fallback mode');
+            setUseHttpFallback(true);
         }
       };
 
@@ -216,18 +237,40 @@ export default function ChatApp() {
           setReconnectAttempt(0);
         };
         wsInstance.onclose = (event) => {
-          console.log('WebSocket disconnected', event);
+          console.log('WebSocket disconnected', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            timestamp: new Date().toISOString()
+          });
+          
           setWsConnected(false);
           ws.current = null;
+      
+          // Log specific close codes
+          switch (event.code) {
+              case 1000:
+                  console.log("Normal closure");
+                  break;
+              case 1006:
+                  console.log("Abnormal closure - potential server issue or network problem");
+                  break;
+              case 1015:
+                  console.log("TLS handshake error");
+                  break;
+              default:
+                  console.log(`Unknown close code: ${event.code}`);
+          }
+      
           if (!event.wasClean && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
-            const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
-            console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
-            
-            setReconnectAttempt(prev => prev + 1);
-            reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
+              const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
+              console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
+              
+              setReconnectAttempt(prev => prev + 1);
+              reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
           } else {
-            console.log('Switching to HTTP fallback mode');
-            setUseHttpFallback(true);
+              console.log('Switching to HTTP fallback mode');
+              setUseHttpFallback(true);
           }
         };
         wsInstance.onerror = (error) => {
