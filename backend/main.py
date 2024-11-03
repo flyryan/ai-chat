@@ -94,116 +94,118 @@ async def health():
 async def websocket_endpoint(websocket: WebSocket):
     try:
         await websocket.accept()
-        logger.info("WebSocket connection established")
         
         while True:
-            try:
-                data = await websocket.receive_text()
-                request_data = json.loads(data)
-                chat_request = ChatRequest(**request_data)
-                
-                response = client.chat.completions.create(
-                    model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
-                    messages=[{"role": m.role, "content": m.content} for m in chat_request.messages],
-                    max_tokens=chat_request.max_tokens,
-                    temperature=chat_request.temperature,
-                    stream=True  # Enable streaming
-                )
-                
-                # Stream the response
-                for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        await websocket.send_text(chunk.choices[0].delta.content)
-                
-            except Exception as e:
-                logger.error(f"Error processing WebSocket message: {e}")
-                await websocket.send_text(f"Error: {str(e)}")
-                
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}")
-        if websocket.client_state.CONNECTED:
-            await websocket.close(code=1001)
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    try:
-        # Your existing chat logic here
-        deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        speech_result = [{"role": m.role, "content": m.content} for m in request.messages]
-        search_endpoint = os.getenv("SEARCH_ENDPOINT")
-        search_key = os.getenv("SEARCH_KEY")
-        embedding_endpoint = os.getenv("EMBEDDING_ENDPOINT")
-        subscription_key = os.getenv("AZURE_OPENAI_API_KEY")
-        role_information = """
-            1. Primary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.
-            2. Documentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Ludus docs and should reference them always.
-            3. Technical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.
-            4. Approach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.
-            5. Knowledge Hierarchy:
-                • Prioritize Ludus-specific guidance and strategies.
-                • Reference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.
-            6. User Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.
-
-        Context Outline:
-
-            • Ludus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.
-            • Lab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.
-            • Trend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs.
-        """
-
-        try:
-            # The API call as shown above
-            completion = client.chat.completions.create(
-                model=deployment,
-                messages=speech_result,
-                past_messages=10,
-                max_tokens=800,
-                temperature=0.7,
-                top_p=0.95,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stop=None,
-                stream=False,
+            data = await websocket.receive_text()
+            request_data = json.loads(data)
+            chat_request = ChatRequest(**request_data)
+            
+            # Add system prompt
+            system_prompt = {
+                "role": "system",
+                "content": "\t1.\tPrimary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.\n\t2.\tDocumentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Lutus docs and should reference them always.\n\t3.\tTechnical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.\n\t4.\tApproach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.\n\t5.\tKnowledge Hierarchy:\n\t•\tPrioritize Ludus-specific guidance and strategies.\n\t•\tReference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.\n\t6.\tUser Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.\n\nContext Outline\n\n\t•\tLudus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.\n\t•\tLab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.\n\t•\tTrend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs."
+            }
+            messages = [system_prompt] + [{"role": m.role, "content": m.content} for m in chat_request.messages]
+            
+            response = client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+                messages=messages,
+                max_tokens=chat_request.max_tokens,
+                temperature=chat_request.temperature,
+                stream=True,
                 extra_body={
                     "data_sources": [{
                         "type": "azure_search",
                         "parameters": {
                             "filter": None,
-                            "endpoint": search_endpoint,
+                            "endpoint": os.getenv("AZURE_SEARCH_ENDPOINT"),
                             "index_name": "ludus-trend-docs",
                             "semantic_configuration": "azureml-default",
                             "authentication": {
                                 "type": "api_key",
-                                "key": search_key
+                                "key": os.getenv("AZURE_SEARCH_KEY")
                             },
                             "embedding_dependency": {
                                 "type": "endpoint",
-                                "endpoint": embedding_endpoint,
+                                "endpoint": f"{os.getenv('AZURE_ENDBEDDING_ENDPOINT')}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
                                 "authentication": {
                                     "type": "api_key",
-                                    "key": subscription_key
+                                    "key": os.getenv("AZURE_OPENAI_API_KEY")
                                 }
                             },
                             "query_type": "vector_simple_hybrid",
                             "in_scope": True,
-                            "role_information": role_information,
+                            "role_information": system_prompt["content"],
                             "strictness": 3,
                             "top_n_documents": 5
                         }
                     }]
                 }
             )
-        except Exception as e:
-            logger.error(f"Error during OpenAI API call: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An error occurred while processing your request."
-            )
+            
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    await websocket.send_text(chunk.choices[0].delta.content)
+                    
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        if websocket.client_state.CONNECTED:
+            await websocket.close(code=1001)
 
-        print(completion.to_json())
-
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    try:
+        # System prompt should be included in every conversation
+        system_prompt = {
+            "role": "system",
+            "content": "\t1.\tPrimary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.\n\t2.\tDocumentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Lutus docs and should reference them always.\n\t3.\tTechnical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.\n\t4.\tApproach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.\n\t5.\tKnowledge Hierarchy:\n\t•\tPrioritize Ludus-specific guidance and strategies.\n\t•\tReference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.\n\t6.\tUser Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.\n\nContext Outline\n\n\t•\tLudus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.\n\t•\tLab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.\n\t•\tTrend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs."
+        }
+        
+        # Combine system prompt with user messages
+        messages = [system_prompt] + [{"role": m.role, "content": m.content} for m in request.messages]
+        
+        completion = client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+            messages=messages,
+            max_tokens=800,
+            temperature=0.7,
+            top_p=0.95,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=None,
+            stream=False,
+            extra_body={
+                "data_sources": [{
+                    "type": "azure_search",
+                    "parameters": {
+                        "filter": None,
+                        "endpoint": os.getenv("AZURE_SEARCH_ENDPOINT"),
+                        "index_name": "ludus-trend-docs",
+                        "semantic_configuration": "azureml-default",
+                        "authentication": {
+                            "type": "api_key",
+                            "key": os.getenv("AZURE_SEARCH_KEY")
+                        },
+                        "embedding_dependency": {
+                            "type": "endpoint",
+                            "endpoint": f"{os.getenv('AZURE_EMBEDDING_ENDPOINT')}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
+                            "authentication": {
+                                "type": "api_key",
+                                "key": os.getenv("AZURE_EMBEDDING_KEY")
+                            }
+                        },
+                        "query_type": "vector_simple_hybrid",
+                        "in_scope": True,
+                        "role_information": system_prompt["content"],
+                        "strictness": 3,
+                        "top_n_documents": 5
+                    }
+                }]
+            }
+        )
+        
         return {
-            "response": "Test response",
+            "response": completion.choices[0].message.content,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
