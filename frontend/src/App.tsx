@@ -193,9 +193,78 @@ export default function ChatApp() {
   };
 
   useEffect(() => {
+    const connectWebSocket = () => {
+      if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+        console.log('Max reconnection attempts reached, switching to HTTP fallback');
+        setUseHttpFallback(true);
+        setWsConnected(false);
+        return;
+      }
+      if (ws.current) {
+        ws.current.close();
+        ws.current = null;
+      }
+  
+      try {
+        console.log(`Connecting to WebSocket... Attempt ${reconnectAttempt + 1}/${MAX_RECONNECT_ATTEMPTS}`);
+        const wsInstance = new WebSocket(WS_URL);
+        
+        wsInstance.onopen = () => {
+          console.log('WebSocket connected successfully');
+          setWsConnected(true);
+          setUseHttpFallback(false);
+          setReconnectAttempt(0);
+        };
+        wsInstance.onclose = (event) => {
+          console.log('WebSocket disconnected', event);
+          setWsConnected(false);
+          ws.current = null;
+          if (!event.wasClean && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
+            console.log(`Scheduling reconnection in ${backoffDelay}ms...`);
+            
+            setReconnectAttempt(prev => prev + 1);
+            reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
+          } else {
+            console.log('Switching to HTTP fallback mode');
+            setUseHttpFallback(true);
+          }
+        };
+        wsInstance.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
+        wsInstance.onmessage = (event) => {
+          try {
+            console.log('WebSocket message received:', event.data);
+            setMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+                const lastMessage = { ...newMessages[newMessages.length - 1] };
+                lastMessage.content += event.data;
+                newMessages[newMessages.length - 1] = lastMessage;
+              } else {
+                newMessages.push({
+                  role: 'assistant',
+                  content: event.data,
+                  timestamp: new Date().toISOString()
+                });
+              }
+              return newMessages;
+            });
+          } catch (error) {
+            console.error('Error processing WebSocket message:', error);
+          }
+        };
+        ws.current = wsInstance;
+      } catch (error) {
+        console.error('Error creating WebSocket connection:', error);
+      }
+    };
+  
     if (!useHttpFallback) {
       connectWebSocket();
     }
+  
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -204,7 +273,7 @@ export default function ChatApp() {
         ws.current.close();
       }
     };
-  }, [connectWebSocket, useHttpFallback]);
+  }, [connectWebSocket, useHttpFallback, reconnectAttempt]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
