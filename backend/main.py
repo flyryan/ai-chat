@@ -155,13 +155,12 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        # System prompt should be included in every conversation
+        # System prompt setup
         system_prompt = {
             "role": "system",
             "content": "\t1.\tPrimary Role: You are a Ludus expert, designed to assist with establishing lab networks. You must know the ins and outs of Ludus, including provisioning, network setup, and optimization.\n\t2.\tDocumentation Reference: You have access to specific Trend Micro documentation for supporting configurations. Use this documentation only when necessary and focus on Ludus capabilities to deploy representative machines for Trend Micro applications. You also have access to all Lutus docs and should reference them always.\n\t3.\tTechnical Emphasis: Your responses should always be technically accurate and detailed. Be prepared to handle both basic and advanced inquiries about lab deployment.\n\t4.\tApproach and Tone: Be helpful and detail-oriented. Respond with a cheerful but precise tone, ensuring every configuration or deployment step is clear.\n\t5.\tKnowledge Hierarchy:\n\t•\tPrioritize Ludus-specific guidance and strategies.\n\t•\tReference Trend Micro docs sparingly and only when explicitly required, always tying them back to Ludus deployment use cases.\n\t6.\tUser Expertise: Assume the user has a high level of technical knowledge. Avoid overly simplified explanations but remain clear in your guidance.\n\nContext Outline\n\n\t•\tLudus Proficiency: You are an expert in Ludus Cloud services, capable of setting up and managing lab environments efficiently.\n\t•\tLab Setup Focus: Your primary task is to help establish a lab network using Ludus, which may include configuring representative machines to test or run software.\n\t•\tTrend Micro Integration: While your core role centers on Ludus, you can assist with deploying environments that support Trend Micro products. When doing so, emphasize how Ludus can be leveraged to meet configuration and deployment needs."
         }
         
-        # Combine system prompt with user messages
         messages = [system_prompt] + [{"role": m.role, "content": m.content} for m in request.messages]
         
         completion = client.chat.completions.create(
@@ -174,36 +173,24 @@ async def chat(request: ChatRequest):
             presence_penalty=0,
             stop=None,
             stream=False,
-            extra_body={
-                "data_sources": [{
-                    "type": "azure_search",
-                    "parameters": {
-                        "filter": None,
-                        "endpoint": os.getenv("AZURE_SEARCH_ENDPOINT"),
-                        "index_name": "ludus-trend-docs",
-                        "semantic_configuration": "azureml-default",
-                        "authentication": {
-                            "type": "api_key",
-                            "key": os.getenv("AZURE_SEARCH_KEY")
-                        },
-                        "embedding_dependency": {
-                            "type": "endpoint",
-                            "endpoint": f"{os.getenv('AZURE_EMBEDDING_ENDPOINT')}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
-                            "authentication": {
-                                "type": "api_key",
-                                "key": os.getenv("AZURE_EMBEDDING_KEY")
-                            }
-                        },
-                        "query_type": "vector_simple_hybrid",
-                        "in_scope": True,
-                        "role_information": system_prompt["content"],
-                        "strictness": 3,
-                        "top_n_documents": 5
-                    }
-                }]
-            }
+            dataSources=[{
+                "type": "azure_search",
+                "parameters": {
+                    "endpoint": os.getenv("AZURE_SEARCH_ENDPOINT"),
+                    "key": os.getenv("AZURE_SEARCH_KEY"),
+                    "indexName": "ludus-trend-docs",
+                    "roleInformation": system_prompt["content"],
+                    "filter": None,
+                    "semanticConfiguration": "azureml-default",
+                    "queryType": "vector_simple_hybrid",
+                    "strictness": 3,
+                    "topNDocuments": 5,
+                    "inScope": True,
+                    "embeddingDeploymentName": "text-embedding-ada-002"
+                }
+            }]
         )
-        
+
         return {
             "response": completion.choices[0].message.content,
             "timestamp": datetime.now().isoformat()
