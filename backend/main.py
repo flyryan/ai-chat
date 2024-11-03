@@ -15,11 +15,18 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Get allowed origins from environment variable or use default
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+# Get frontend URL from environment variable or use default
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://salmon-grass-06d76a510.5.azurestaticapps.net")
+ADDITIONAL_ORIGINS = os.getenv("ADDITIONAL_ORIGINS", "").split(",")
+
+# Combine all allowed origins
+ALLOWED_ORIGINS = [FRONTEND_URL] + [origin for origin in ADDITIONAL_ORIGINS if origin]
+if "*" in ADDITIONAL_ORIGINS:
+    ALLOWED_ORIGINS = ["*"]
+
 logger.info(f"Configured ALLOWED_ORIGINS: {ALLOWED_ORIGINS}")
 
-# CORS middleware with explicit origins
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -29,103 +36,15 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# Environment variables
-ENDPOINT = os.getenv("ENDPOINT_URL", "https://ai-trendgpt898002997326.openai.azure.com/")
-DEPLOYMENT = os.getenv("DEPLOYMENT_NAME", "TrendGPT")
-SEARCH_ENDPOINT = os.getenv("SEARCH_ENDPOINT", "https://trendgpt898002997326.search.windows.net")
-SEARCH_KEY = os.getenv("SEARCH_KEY")
-SUBSCRIPTION_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-
-# Initialize Azure OpenAI client
-client = AzureOpenAI(
-    azure_endpoint=ENDPOINT,
-    api_key=SUBSCRIPTION_KEY,
-    api_version="2024-05-01-preview",
-)
-
-class Message(BaseModel):
+class ChatMessage(BaseModel):
     role: str
     content: str
-    timestamp: Optional[str] = None
+    timestamp: str
 
 class ChatRequest(BaseModel):
-    messages: List[Message]
-    max_tokens: int = 800
-    temperature: float = 0.7
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    try:
-        await websocket.accept()
-        logger.info("WebSocket connection accepted")
-        
-        while True:
-            try:
-                # Receive and parse the message
-                data = await websocket.receive_text()
-                logger.info("Received WebSocket message")
-                request_data = json.loads(data)
-                
-                # Process the request
-                messages = request_data.get("messages", [])
-                messages = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
-                
-                # Create completion with streaming
-                completion = client.chat.completions.create(
-                    model=DEPLOYMENT,
-                    messages=messages,
-                    stream=True,
-                    max_tokens=request_data.get("max_tokens", 800),
-                    temperature=request_data.get("temperature", 0.7),
-                    extra_body={
-                        "data_sources": [{
-                            "type": "azure_search",
-                            "parameters": {
-                                "endpoint": SEARCH_ENDPOINT,
-                                "index_name": "ludus-trend-docs",
-                                "semantic_configuration": "azureml-default",
-                                "authentication": {
-                                    "type": "api_key",
-                                    "key": SEARCH_KEY
-                                },
-                                "embedding_dependency": {
-                                    "type": "endpoint",
-                                    "endpoint": f"{ENDPOINT}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
-                                    "authentication": {
-                                        "type": "api_key",
-                                        "key": SUBSCRIPTION_KEY
-                                    }
-                                },
-                                "query_type": "vector_simple_hybrid",
-                                "in_scope": True,
-                                "strictness": 3,
-                                "top_n_documents": 5
-                            }
-                        }]
-                    }
-                )
-                
-                # Stream the response
-                for chunk in completion:
-                    if chunk.choices[0].delta.content:
-                        await websocket.send_text(chunk.choices[0].delta.content)
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {str(e)}")
-                await websocket.send_text(f"Error: Invalid JSON format - {str(e)}")
-                
-            except Exception as e:
-                logger.error(f"Error processing WebSocket message: {str(e)}")
-                await websocket.send_text(f"Error: {str(e)}")
-                
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {str(e)}")
-        if websocket.client_state.value:
-            await websocket.close()
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    messages: List[ChatMessage]
+    max_tokens: Optional[int] = 800
+    temperature: Optional[float] = 0.7
 
 @app.get("/health")
 async def health():
@@ -134,6 +53,42 @@ async def health():
         "allowed_origins": ALLOWED_ORIGINS,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    try:
+        await websocket.accept()
+        logger.info("WebSocket connection established")
+        
+        while True:
+            try:
+                data = await websocket.receive_text()
+                # Process the message and send response
+                # Add your message handling logic here
+                await websocket.send_text("Message received")
+            except Exception as e:
+                logger.error(f"Error processing WebSocket message: {e}")
+                await websocket.send_text(f"Error processing message: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+        if websocket.client_state.CONNECTED:
+            await websocket.close(code=1001)
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    try:
+        # Your existing chat logic here
+        return {
+            "response": "Test response",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 if __name__ == "__main__":
     import uvicorn

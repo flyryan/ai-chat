@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  Send, Loader, Copy, Check, Bold, Italic, Code, List, 
-  ListOrdered, Terminal 
+  Send, Loader, Bold, Italic, Code
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_API_URL || 'https://ludus-chat-backend.azurewebsites.net';
@@ -34,84 +33,97 @@ export default function ChatApp() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   const connectWebSocket = useCallback(() => {
+    // Clear any existing reconnection timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    // Don't create a new connection if one already exists and is open
     if (ws.current?.readyState === WebSocket.OPEN) {
       console.log('WebSocket already connected');
       return;
     }
 
-    console.log('Connecting to WebSocket...', WS_URL);
-    const wsInstance = new WebSocket(WS_URL);
+    // Maximum number of reconnection attempts
+    const MAX_RECONNECT_ATTEMPTS = 5;
     
-    wsInstance.onopen = () => {
-      console.log('WebSocket connected successfully');
-      setWsConnected(true);
-    };
+    try {
+      console.log('Connecting to WebSocket...', WS_URL);
+      const wsInstance = new WebSocket(WS_URL);
+      
+      wsInstance.onopen = () => {
+        console.log('WebSocket connected successfully');
+        setWsConnected(true);
+        setReconnectAttempt(0); // Reset reconnection attempts on successful connection
+      };
 
-    wsInstance.onclose = (event) => {
-      console.log('WebSocket disconnected', event);
-      setWsConnected(false);
-      ws.current = null;
-      if (!event.wasClean) {
-        console.log('Attempting to reconnect...');
-        setTimeout(connectWebSocket, 3000);
-      }
-    };
+      wsInstance.onclose = (event) => {
+        console.log('WebSocket disconnected', event);
+        setWsConnected(false);
+        ws.current = null;
 
-    wsInstance.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      if (error instanceof ErrorEvent) {
-        console.error('Error details:', error.message);
-      }
-    };
-
-    wsInstance.onmessage = (event) => {
-      console.log('WebSocket message received:', event.data);
-      setMessages(prev => {
-        const newMessages = [...prev];
-        if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
-          const lastMessage = newMessages[newMessages.length - 1];
-          lastMessage.content += event.data;
-        } else {
-          newMessages.push({
-            role: 'assistant',
-            content: event.data,
-            timestamp: new Date().toISOString()
-          });
+        // Only attempt reconnection if not intentionally closed and within max attempts
+        if (!event.wasClean && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+          const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
+          console.log(`Attempting to reconnect in ${backoffDelay}ms... (Attempt ${reconnectAttempt + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            setReconnectAttempt(prev => prev + 1);
+            connectWebSocket();
+          }, backoffDelay);
         }
-        return newMessages;
-      });
-    };
+      };
 
-    ws.current = wsInstance;
-  }, []);
+      wsInstance.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      wsInstance.onmessage = (event) => {
+        try {
+          console.log('WebSocket message received:', event.data);
+          setMessages(prev => {
+            const newMessages = [...prev];
+            if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+              newMessages[newMessages.length - 1].content += event.data;
+            } else {
+              newMessages.push({
+                role: 'assistant',
+                content: event.data,
+                timestamp: new Date().toISOString()
+              });
+            }
+            return newMessages;
+          });
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
+      };
+
+      ws.current = wsInstance;
+    } catch (error) {
+      console.error('Error creating WebSocket connection:', error);
+      setWsConnected(false);
+    }
+  }, [reconnectAttempt]);
 
   useEffect(() => {
     connectWebSocket();
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       if (ws.current) {
         ws.current.close();
       }
     };
   }, [connectWebSocket]);
-
-  useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/health`);
-        const data = await response.json();
-        console.log('Backend health check:', data);
-      } catch (error) {
-        console.error('Backend health check failed:', error);
-      }
-    };
-
-    checkBackendHealth();
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -158,13 +170,19 @@ export default function ChatApp() {
       setInput('');
       setIsLoading(true);
 
+      const requestBody = {
+        messages: [...messages, newMessage].map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp
+        })),
+        max_tokens: 800,
+        temperature: 0.7
+      };
+
       if (wsConnected && ws.current?.readyState === WebSocket.OPEN) {
         console.log('Sending message via WebSocket');
-        ws.current.send(JSON.stringify({
-          messages: [...messages, newMessage],
-          max_tokens: 800,
-          temperature: 0.7
-        }));
+        ws.current.send(JSON.stringify(requestBody));
       } else {
         console.log('Sending message via HTTP');
         const response = await fetch(`${BACKEND_URL}/chat`, {
@@ -172,11 +190,7 @@ export default function ChatApp() {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            messages: [...messages, newMessage],
-            max_tokens: 800,
-            temperature: 0.7
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -209,6 +223,7 @@ export default function ChatApp() {
         <div className="text-sm text-gray-500 flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
           {wsConnected ? 'Connected' : 'Disconnected'}
+          {reconnectAttempt > 0 && !wsConnected && ` (Reconnecting... Attempt ${reconnectAttempt})`}
         </div>
       </div>
 
