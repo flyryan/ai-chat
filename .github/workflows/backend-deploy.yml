@@ -12,8 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    # 1. Initial Setup
     - uses: actions/checkout@v2
     
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # 2. Environment Setup    
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -24,7 +31,35 @@ jobs:
         cd backend
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
+
+    # 3. Configuration
+    - name: Set SCM_DO_BUILD_DURING_DEPLOYMENT
+      run: echo "[config]\nSCM_DO_BUILD_DURING_DEPLOYMENT=true" > backend/.deployment
+
+    - name: Configure Always On
+      run: |
+        az webapp config set --name ludus-chat-backend \
+          --resource-group rg-ryai \
+          --always-on true
+
+    - name: Create startup command
+      run: |
+        cd backend
+        cat > gunicorn.conf.py << 'EOL'
+        import multiprocessing
+
+        bind = "0.0.0.0:8000"
+        workers = multiprocessing.cpu_count() * 2 + 1
+        worker_class = "uvicorn.workers.UvicornWorker"
+        timeout = 120
+        keepalive = 5
+        wsgi_app = "main:app"
+        worker_connections = 1000
+        EOL
+        echo "gunicorn -c gunicorn.conf.py main:app" > startup.sh
+        chmod +x startup.sh
+
+    # 4. Deployment
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
       with:
@@ -51,5 +86,16 @@ jobs:
 
     - name: Verify deployment
       run: |
-        sleep 30
-        curl -f https://ludus-chat-backend.azurewebsites.net/health || exit 1
+        max_attempts=5
+        attempt=1
+        while [ $attempt -le $max_attempts ]; do
+          echo "Attempt $attempt of $max_attempts"
+          sleep 30
+          if curl -f https://ludus-chat-backend.azurewebsites.net/health; then
+            echo "Deployment verified successfully"
+            exit 0
+          fi
+          attempt=$((attempt + 1))
+        done
+        echo "Deployment verification failed after $max_attempts attempts"
+        exit 1
