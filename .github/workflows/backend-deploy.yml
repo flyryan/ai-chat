@@ -51,6 +51,7 @@ jobs:
           az webapp config appsettings set --name ludus-chat-backend \
             --resource-group ludus-chat-rg \
             --settings \
+            WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
             AZURE_OPENAI_API_KEY="${{ secrets.AZURE_OPENAI_API_KEY }}" \
             AZURE_OPENAI_ENDPOINT="https://ai-trendgpt898002997326.openai.azure.com/" \
             AZURE_OPENAI_DEPLOYMENT_NAME="TrendGPT"
