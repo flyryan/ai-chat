@@ -1,2 +1,2 @@
 #!/bin/bash
-gunicorn -c gunicorn.conf.py main:app
+gunicorn -c backend/gunicorn.conf.py backend/main:app
