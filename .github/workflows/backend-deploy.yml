@@ -30,23 +30,32 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Configure App Settings
+    - name: Configure Basic App Settings
       uses: Azure/cli@v1
       with:
         inlineScript: |
-          az webapp config appsettings set --name ${{ secrets.WEBAPP_NAME }} \
+          az webapp config appsettings set \
+            --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --settings \
-            WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
-            OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
-            OPENAI_API_VERSION="2023-05-15" \
-            OPENAI_DEPLOYMENT_NAME="${{ secrets.OPENAI_DEPLOYMENT_NAME }}" \
-            VECTOR_SEARCH_ENABLED="${{ secrets.VECTOR_SEARCH_ENABLED }}" \
-            VECTOR_SEARCH_ENDPOINT="${{ secrets.VECTOR_SEARCH_ENDPOINT }}" \
-            VECTOR_SEARCH_KEY="${{ secrets.VECTOR_SEARCH_KEY }}" \
-            VECTOR_SEARCH_INDEX="${{ secrets.VECTOR_SEARCH_INDEX }}" \
-            SYSTEM_PROMPT="${{ secrets.SYSTEM_PROMPT }}"
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              OPENAI_API_BASE="${{ secrets.OPENAI_API_BASE }}" \
+              OPENAI_API_VERSION="2023-05-15" \
+              OPENAI_DEPLOYMENT_NAME="${{ secrets.OPENAI_DEPLOYMENT_NAME }}" \
+              VECTOR_SEARCH_ENABLED="${{ secrets.VECTOR_SEARCH_ENABLED }}" \
+              VECTOR_SEARCH_ENDPOINT="${{ secrets.VECTOR_SEARCH_ENDPOINT }}" \
+              VECTOR_SEARCH_KEY="${{ secrets.VECTOR_SEARCH_KEY }}" \
+              VECTOR_SEARCH_INDEX="${{ secrets.VECTOR_SEARCH_INDEX }}"
+
+    - name: Configure System Prompt
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          az webapp config appsettings set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --settings SYSTEM_PROMPT="${{ toJSON(secrets.SYSTEM_PROMPT) }}"
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
