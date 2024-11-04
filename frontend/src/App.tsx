@@ -19,6 +19,9 @@ import 'prismjs/components/prism-markdown';
 // Then import marked
 import { marked } from 'marked';
 
+import MarkdownEditor from './components/MarkdownEditor';
+import { config } from './config';
+
 // Configure marked to use Prism
 marked.setOptions({
   highlight: function(code, lang) {
@@ -28,9 +31,6 @@ marked.setOptions({
     return code;
   }
 });
-
-import MarkdownEditor from './components/MarkdownEditor';
-import { config } from './config';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
