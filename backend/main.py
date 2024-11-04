@@ -94,53 +94,59 @@ class ChatRequest(BaseModel):
 
 # Initialize OpenAI client with configuration
 client = AzureOpenAI(
+    azure_endpoint=settings.openai_api_base,
     api_key=settings.openai_api_key,
-    api_version=settings.openai_api_version,
-    azure_endpoint=str(settings.openai_api_base)
+    api_version="2024-05-01-preview"
 )
 
-def prepare_vector_search_config() -> Optional[Dict[str, Any]]:
-    """Prepare vector search configuration if enabled"""
-    if not settings.vector_search_enabled:
-        return None
-        
+def prepare_vector_search_config() -> Dict[str, Any]:
+    """Prepare vector search configuration based on working reference"""
     return {
-        "type": "azure_cognitive_search",
-        "parameters": {
-            "endpoint": str(settings.vector_search_endpoint),
-            "key": settings.vector_search_key,
-            "indexName": settings.vector_search_index,
-            "fieldsMapping": {
-                "contentFields": ["content"],
-                "titleField": "title",
-                "urlField": "url",
-                "filepathField": "filepath"
-            },
-            "inScope": True,
-            "roleInformation": settings.system_prompt,
-            "strictness": 3,
-            "topNDocuments": 5
-        }
+        "data_sources": [{
+            "type": "azure_search",
+            "parameters": {
+                "filter": None,
+                "endpoint": str(settings.vector_search_endpoint),
+                "index_name": settings.vector_search_index,
+                "semantic_configuration": "azureml-default",
+                "authentication": {
+                    "type": "api_key",
+                    "key": settings.vector_search_key
+                },
+                "embedding_dependency": {
+                    "type": "endpoint",
+                    "endpoint": f"{settings.openai_api_base}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
+                    "authentication": {
+                        "type": "api_key",
+                        "key": settings.openai_api_key
+                    }
+                },
+                "query_type": "vector_simple_hybrid",
+                "in_scope": True,
+                "role_information": settings.system_prompt,
+                "strictness": 3,
+                "top_n_documents": 5
+            }
+        }]
     }
 
 async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: int, temperature: float, stream: bool = False):
-    """Generate chat completion with proper error handling"""
+    """Generate chat completion with updated vector search configuration"""
     try:
         completion_kwargs = {
             "model": settings.openai_deployment_name,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
+            "top_p": 0.95,
+            "frequency_penalty": 0,
+            "presence_penalty": 0,
             "stream": stream,
         }
         
-        # Add data sources if vector search is enabled
-        vector_search_config = prepare_vector_search_config()
-        if vector_search_config:
-            completion_kwargs["extra_body"] = {
-                "dataSources": [vector_search_config]
-            }
-            logger.info("Vector search enabled for completion")
+        if settings.vector_search_enabled:
+            completion_kwargs.update(prepare_vector_search_config())
+            logger.info("Vector search configuration added to completion request")
         
         logger.debug(f"Calling OpenAI with parameters: {completion_kwargs}")
         return await client.chat.completions.create(**completion_kwargs)
@@ -152,6 +158,35 @@ async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: i
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OpenAI API error: {str(e)}"
         )
+
+async def validate_openai_config():
+    """Validate OpenAI configuration by making a test request"""
+    try:
+        logger.info(f"Validating OpenAI configuration...")
+        logger.info(f"API Base: {settings.openai_api_base}")
+        logger.info(f"API Version: settings.openai_api_version")
+        logger.info(f"Deployment Name: {settings.openai_deployment_name}")
+        
+        test_completion = await client.chat.completions.create(
+            model=settings.openai_deployment_name,
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=10,
+            temperature=0,
+            stream=False
+        )
+        logger.info("OpenAI configuration validated successfully")
+        return True
+    except Exception as e:
+        logger.error(f"OpenAI configuration validation failed: {str(e)}")
+        logger.exception(e)
+        return False
+
+@app.on_event("startup")
+async def startup_event():
+    """Validate configuration on startup"""
+    if not await validate_openai_config():
+        logger.error("Failed to validate OpenAI configuration")
+        # You might want to exit here or handle the error differently
 
 @app.get("/")
 async def root():
@@ -222,10 +257,9 @@ async def websocket_endpoint(websocket: WebSocket):
         
         while True:
             try:
-                # Log the start of message processing
                 data = await websocket.receive_text()
                 logger.info("Received WebSocket message")
-                logger.debug(f"Raw message content: {data}")
+                logger.debug(f"Message content: {data[:100]}...")
                 
                 try:
                     request_data = json.loads(data)
@@ -253,56 +287,30 @@ async def websocket_endpoint(websocket: WebSocket):
                 ]
                 
                 logger.debug(f"Prepared messages: {messages}")
-                logger.info("Preparing OpenAI API call")
                 
                 try:
-                    completion_kwargs = {
-                        "model": settings.openai_deployment_name,
-                        "messages": messages,
-                        "max_tokens": chat_request.max_tokens,
-                        "temperature": chat_request.temperature,
-                        "stream": True
-                    }
+                    completion = await generate_chat_completion(
+                        messages=messages,
+                        max_tokens=chat_request.max_tokens,
+                        temperature=chat_request.temperature,
+                        stream=True
+                    )
                     
-                    # Add vector search if enabled
-                    if settings.vector_search_enabled:
-                        logger.info("Vector search is enabled, adding configuration")
-                        vector_search_config = {
-                            "type": "azure_cognitive_search",
-                            "parameters": {
-                                "endpoint": str(settings.vector_search_endpoint),
-                                "key": settings.vector_search_key,
-                                "indexName": settings.vector_search_index,
-                                "roleInformation": settings.system_prompt,
-                                "strictness": 3,
-                                "topNDocuments": 5
-                            }
-                        }
-                        completion_kwargs["extra_body"] = {
-                            "dataSources": [vector_search_config]
-                        }
-                        logger.debug("Added vector search configuration")
-                    
-                    logger.debug(f"Final completion kwargs: {completion_kwargs}")
-                    completion = await client.chat.completions.create(**completion_kwargs)
-                    
-                    # Process streaming response
                     async for chunk in completion:
                         if chunk.choices[0].delta.content:
                             await websocket.send_text(chunk.choices[0].delta.content)
-                    
+                            
                 except Exception as e:
                     error_msg = f"OpenAI API error: {str(e)}"
                     logger.error(error_msg)
                     logger.exception(e)
                     await websocket.send_text(f"Error: {str(e)}")
                     
-            except WebSocketDisconnect:
-                logger.info("WebSocket disconnected")
-                break
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {str(e)}")
+                await websocket.send_text("Invalid JSON format")
             except Exception as e:
-                error_msg = f"Unexpected error: {str(e)}"
-                logger.error(error_msg)
+                logger.error(f"Error processing message: {str(e)}")
                 logger.exception(e)
                 await websocket.send_text(f"Error: {str(e)}")
                 
