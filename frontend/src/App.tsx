@@ -27,12 +27,11 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
   }, [content]);
 
   const renderer = new marked.Renderer();
-  // Customize code blocks to use Prism
   renderer.code = (code, language) => {
-    const validLanguage = Prism.languages[language || 'text'] ? language : 'text';
+    const validLanguage = language && Prism.languages[language] ? language : 'text';
     const highlighted = Prism.highlight(
       code,
-      Prism.languages[validLanguage],
+      Prism.languages[validLanguage] || Prism.languages.text,
       validLanguage
     );
     return `<pre class="bg-gray-800 rounded-lg my-2"><code class="language-${validLanguage}">${highlighted}</code></pre>`;
@@ -42,7 +41,8 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     renderer,
     gfm: true,
     breaks: true,
-    headerIds: true
+    headerIds: true,
+    headerPrefix: 'heading-'
   });
 
   return (
