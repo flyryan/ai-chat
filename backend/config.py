@@ -3,29 +3,12 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 from functools import lru_cache
+import logging
 
-class OpenAISettings(BaseModel):
-    """Settings specific to Azure OpenAI integration"""
-    api_key: str = Field(..., description="Azure OpenAI API key")
-    api_base: HttpUrl = Field(..., description="Azure OpenAI base URL")
-    api_version: str = Field(default="2023-05-15", description="Azure OpenAI API version")
-    deployment_name: str = Field(..., description="Model deployment name")
-    temperature: float = Field(default=0.7, description="Model temperature (0-1)")
-    max_tokens: int = Field(default=4000, description="Maximum tokens per response")
-
-class VectorSearchSettings(BaseModel):
-    """Settings specific to Azure Vector Search integration"""
-    enabled: bool = Field(default=False, description="Whether vector search is enabled")
-    endpoint: Optional[HttpUrl] = Field(default=None, description="Vector search endpoint URL")
-    key: Optional[str] = Field(default=None, description="Vector search API key")
-    index_name: Optional[str] = Field(default=None, description="Vector search index name")
-    semantic_config: str = Field(default="default", description="Semantic configuration name")
-    query_type: str = Field(default="vector_simple_hybrid", description="Query type for vector search")
-    strictness: int = Field(default=3, description="Search strictness level (1-5)")
-    top_n_documents: int = Field(default=5, description="Number of documents to retrieve")
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
-    """Main application settings"""
+    """Main application settings with case-insensitive environment variables"""
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -36,50 +19,76 @@ class Settings(BaseSettings):
     # Basic configuration
     app_name: str = Field(
         default="AI Chat Assistant",
-        alias="APP_NAME",
-        description="Application name"
+        validation_alias="APP_NAME",
+        alias="app_name"
     )
     environment: str = Field(
         default="production",
-        alias="ENVIRONMENT",
-        description="Deployment environment"
+        validation_alias="ENVIRONMENT",
+        alias="environment"
     )
     debug: bool = Field(
         default=False,
-        alias="DEBUG",
-        description="Debug mode flag"
+        validation_alias="DEBUG",
+        alias="debug"
     )
 
     # CORS configuration
     cors_origins: Union[str, List[str]] = Field(
         default=["http://localhost:3000"],
-        alias="CORS_ORIGINS",
-        description="Allowed CORS origins as comma-separated string or list"
+        validation_alias="CORS_ORIGINS",
+        alias="cors_origins"
     )
 
     # OpenAI configuration
-    openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
-    openai_api_base: HttpUrl = Field(..., alias="OPENAI_API_BASE")
-    openai_api_version: str = Field(default="2023-05-15", alias="OPENAI_API_VERSION")
-    openai_deployment_name: str = Field(..., alias="OPENAI_DEPLOYMENT_NAME")
-    openai_temperature: float = Field(default=0.7, alias="OPENAI_TEMPERATURE")
-    openai_max_tokens: int = Field(default=4000, alias="OPENAI_MAX_TOKENS")
+    openai_api_key: str = Field(
+        ...,
+        validation_alias="OPENAI_API_KEY",
+        alias="openai_api_key"
+    )
+    openai_api_base: HttpUrl = Field(
+        ...,
+        validation_alias="OPENAI_API_BASE",
+        alias="openai_api_base"
+    )
+    openai_api_version: str = Field(
+        default="2023-05-15",
+        validation_alias="OPENAI_API_VERSION",
+        alias="openai_api_version"
+    )
+    openai_deployment_name: str = Field(
+        ...,
+        validation_alias="OPENAI_DEPLOYMENT_NAME",
+        alias="openai_deployment_name"
+    )
     
     # Vector Search configuration
-    vector_search_enabled: bool = Field(default=False, alias="VECTOR_SEARCH_ENABLED")
-    vector_search_endpoint: Optional[HttpUrl] = Field(default=None, alias="VECTOR_SEARCH_ENDPOINT")
-    vector_search_key: Optional[str] = Field(default=None, alias="VECTOR_SEARCH_KEY")
-    vector_search_index: Optional[str] = Field(default=None, alias="VECTOR_SEARCH_INDEX")
-    vector_search_semantic_config: str = Field(default="default", alias="VECTOR_SEARCH_SEMANTIC_CONFIG")
-    vector_search_query_type: str = Field(default="vector_simple_hybrid", alias="VECTOR_SEARCH_QUERY_TYPE")
-    vector_search_strictness: int = Field(default=3, alias="VECTOR_SEARCH_STRICTNESS")
-    vector_search_top_n: int = Field(default=5, alias="VECTOR_SEARCH_TOP_N")
+    vector_search_enabled: bool = Field(
+        default=False,
+        validation_alias="VECTOR_SEARCH_ENABLED",
+        alias="vector_search_enabled"
+    )
+    vector_search_endpoint: Optional[HttpUrl] = Field(
+        default=None,
+        validation_alias="VECTOR_SEARCH_ENDPOINT",
+        alias="vector_search_endpoint"
+    )
+    vector_search_key: Optional[str] = Field(
+        default=None,
+        validation_alias="VECTOR_SEARCH_KEY",
+        alias="vector_search_key"
+    )
+    vector_search_index: Optional[str] = Field(
+        default=None,
+        validation_alias="VECTOR_SEARCH_INDEX",
+        alias="vector_search_index"
+    )
 
     # System configuration
     system_prompt: str = Field(
         default="You are an AI assistant. You aim to be helpful, honest, and direct in your interactions.",
-        alias="SYSTEM_PROMPT",
-        description="Default system prompt for the AI"
+        validation_alias="SYSTEM_PROMPT",
+        alias="system_prompt"
     )
 
     @field_validator("cors_origins", mode="before")
@@ -103,50 +112,27 @@ class Settings(BaseSettings):
         raise ValueError("CORS_ORIGINS must be a string or list")
 
     @property
-    def openai_settings(self) -> OpenAISettings:
-        """Get OpenAI settings"""
-        return OpenAISettings(
-            api_key=self.openai_api_key,
-            api_base=self.openai_api_base,
-            api_version=self.openai_api_version,
-            deployment_name=self.openai_deployment_name,
-            temperature=self.openai_temperature,
-            max_tokens=self.openai_max_tokens
-        )
-
-    @property
-    def vector_search_settings(self) -> VectorSearchSettings:
-        """Get Vector Search settings"""
-        return VectorSearchSettings(
-            enabled=self.vector_search_enabled,
-            endpoint=self.vector_search_endpoint,
-            key=self.vector_search_key,
-            index_name=self.vector_search_index,
-            semantic_config=self.vector_search_semantic_config,
-            query_type=self.vector_search_query_type,
-            strictness=self.vector_search_strictness,
-            top_n_documents=self.vector_search_top_n
-        )
-
-    @property
     def is_development(self) -> bool:
         """Check if running in development environment"""
         return self.environment.lower() == "development"
 
+    def model_post_init(self, _context):
+        """Log loaded configuration for debugging"""
+        logger.info(f"Loaded configuration:")
+        logger.info(f"APP_NAME: {self.app_name}")
+        logger.info(f"ENVIRONMENT: {self.environment}")
+        logger.info(f"CORS_ORIGINS: {self.cors_origins}")
+
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance"""
-    return Settings()
+    logger.info("Loading settings...")
+    try:
+        settings = Settings()
+        return settings
+    except Exception as e:
+        logger.error(f"Error loading settings: {str(e)}")
+        raise
 
 # Create settings instance
 settings = get_settings()
-
-if __name__ == "__main__":
-    # Print current settings for debugging
-    s = get_settings()
-    print(f"Application Name: {s.app_name}")
-    print(f"Environment: {s.environment}")
-    print(f"CORS Origins: {s.cors_origins}")
-    print(f"OpenAI Settings: {s.openai_settings.model_dump()}")
-    if s.vector_search_enabled:
-        print(f"Vector Search Settings: {s.vector_search_settings.model_dump()}")

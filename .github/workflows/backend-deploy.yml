@@ -30,62 +30,40 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # Add debug step before creating settings JSON
-    - name: Debug Settings
-      run: |
-        cd backend
-        # Create temporary .env for debug
-        echo "APP_NAME=\"${{ secrets.APP_NAME }}\"" > .env
-        echo "OPENAI_API_KEY=\"${{ secrets.OPENAI_API_KEY }}\"" >> .env
-        echo "OPENAI_API_BASE=\"${{ secrets.OPENAI_API_BASE }}\"" >> .env
-        echo "OPENAI_API_VERSION=\"${{ secrets.OPENAI_API_VERSION }}\"" >> .env
-        echo "OPENAI_DEPLOYMENT_NAME=\"${{ secrets.OPENAI_DEPLOYMENT_NAME }}\"" >> .env
-        echo "VECTOR_SEARCH_ENABLED=\"${{ secrets.VECTOR_SEARCH_ENABLED }}\"" >> .env
-        echo "VECTOR_SEARCH_ENDPOINT=\"${{ secrets.VECTOR_SEARCH_ENDPOINT }}\"" >> .env
-        echo "VECTOR_SEARCH_KEY=\"${{ secrets.VECTOR_SEARCH_KEY }}\"" >> .env
-        echo "VECTOR_SEARCH_INDEX=\"${{ secrets.VECTOR_SEARCH_INDEX }}\"" >> .env
-        echo "CORS_ORIGINS=\"${{ secrets.CORS_ORIGINS }}\"" >> .env
-        echo "SYSTEM_PROMPT=\"${{ secrets.SYSTEM_PROMPT }}\"" >> .env
-        
-        echo "Running debug script..."
-        python debug_settings.py
-        
-        # Clean up temporary .env
-        rm .env
-
-    - name: Create settings JSON
-      run: |
-        echo '{
-          "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true",
-          "APP_NAME": "${{ secrets.APP_NAME }}",
-          "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
-          "OPENAI_API_BASE": "${{ secrets.OPENAI_API_BASE }}",
-          "OPENAI_API_VERSION": "${{ secrets.OPENAI_API_VERSION }}",
-          "OPENAI_DEPLOYMENT_NAME": "${{ secrets.OPENAI_DEPLOYMENT_NAME }}",
-          "VECTOR_SEARCH_ENABLED": "${{ secrets.VECTOR_SEARCH_ENABLED }}",
-          "VECTOR_SEARCH_ENDPOINT": "${{ secrets.VECTOR_SEARCH_ENDPOINT }}",
-          "VECTOR_SEARCH_KEY": "${{ secrets.VECTOR_SEARCH_KEY }}",
-          "VECTOR_SEARCH_INDEX": "${{ secrets.VECTOR_SEARCH_INDEX }}",
-          "CORS_ORIGINS": "${{ secrets.CORS_ORIGINS }}",
-          "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}"
-        }' > appsettings.json
-
     - name: Configure App Settings
       uses: Azure/cli@v1
       with:
         inlineScript: |
+          # Create a temporary JSON file with all settings
+          echo '{
+            "WEBSITES_ENABLE_APP_SERVICE_STORAGE": "true",
+            "DOCKER_ENABLE_CI": "true",
+            "APP_NAME": "${{ secrets.APP_NAME }}",
+            "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}",
+            "OPENAI_API_BASE": "${{ secrets.OPENAI_API_BASE }}",
+            "OPENAI_API_VERSION": "${{ secrets.OPENAI_API_VERSION }}",
+            "OPENAI_DEPLOYMENT_NAME": "${{ secrets.OPENAI_DEPLOYMENT_NAME }}",
+            "VECTOR_SEARCH_ENABLED": "${{ secrets.VECTOR_SEARCH_ENABLED }}",
+            "VECTOR_SEARCH_ENDPOINT": "${{ secrets.VECTOR_SEARCH_ENDPOINT }}",
+            "VECTOR_SEARCH_KEY": "${{ secrets.VECTOR_SEARCH_KEY }}",
+            "VECTOR_SEARCH_INDEX": "${{ secrets.VECTOR_SEARCH_INDEX }}",
+            "CORS_ORIGINS": "${{ secrets.CORS_ORIGINS }}",
+            "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}",
+            "WEBSITE_ENABLE_APP_SERVICE_STORAGE": "true",
+            "WEBSITE_CONTAINER_SETTINGS": "{ \"environment_variables\": { \"APP_NAME\": \"${{ secrets.APP_NAME }}\", \"OPENAI_API_KEY\": \"${{ secrets.OPENAI_API_KEY }}\", \"OPENAI_API_BASE\": \"${{ secrets.OPENAI_API_BASE }}\", \"OPENAI_API_VERSION\": \"${{ secrets.OPENAI_API_VERSION }}\", \"OPENAI_DEPLOYMENT_NAME\": \"${{ secrets.OPENAI_DEPLOYMENT_NAME }}\", \"VECTOR_SEARCH_ENABLED\": \"${{ secrets.VECTOR_SEARCH_ENABLED }}\", \"VECTOR_SEARCH_ENDPOINT\": \"${{ secrets.VECTOR_SEARCH_ENDPOINT }}\", \"VECTOR_SEARCH_KEY\": \"${{ secrets.VECTOR_SEARCH_KEY }}\", \"VECTOR_SEARCH_INDEX\": \"${{ secrets.VECTOR_SEARCH_INDEX }}\", \"CORS_ORIGINS\": \"${{ secrets.CORS_ORIGINS }}\", \"SYSTEM_PROMPT\": \"${{ secrets.SYSTEM_PROMPT }}\" } }"
+          }' > appsettings.json
+
+          # Update app settings
           az webapp config appsettings set \
             --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --settings @appsettings.json
 
-    - name: Configure startup command
-      uses: Azure/cli@v1
-      with:
-        inlineScript: |
+          # Ensure container settings are applied
           az webapp config set \
             --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --linux-fx-version "PYTHON|3.9" \
             --startup-file "gunicorn main:app --config gunicorn.conf.py"
 
     - name: Deploy to Azure Web App
