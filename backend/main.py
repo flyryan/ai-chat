@@ -160,6 +160,9 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     """HTTP endpoint for chat functionality"""
+    logger.info("Received chat request")
+    logger.debug(f"Request body: {request}")
+    
     try:
         messages = [
             {"role": "system", "content": settings.system_prompt}
@@ -167,6 +170,8 @@ async def chat(request: ChatRequest):
             {"role": m.role, "content": m.content} 
             for m in request.messages
         ]
+        
+        logger.debug(f"Processed messages: {messages}")
         
         completion_kwargs = {
             "model": settings.openai_deployment_name,
@@ -178,6 +183,7 @@ async def chat(request: ChatRequest):
         
         # Add vector search if enabled
         if settings.vector_search_enabled:
+            logger.info("Vector search enabled, adding data sources")
             completion_kwargs["dataSources"] = [{
                 "type": "azure_search",
                 "parameters": {
@@ -194,12 +200,16 @@ async def chat(request: ChatRequest):
                 }
             }]
 
+        logger.debug(f"Calling OpenAI with kwargs: {completion_kwargs}")
         completion = client.chat.completions.create(**completion_kwargs)
+        logger.debug(f"Received completion: {completion}")
 
-        return {
+        response_data = {
             "response": completion.choices[0].message.content,
             "timestamp": datetime.now().isoformat()
         }
+        logger.info("Successfully processed chat request")
+        return response_data
         
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
@@ -207,6 +217,20 @@ async def chat(request: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+# Add root endpoint for debugging
+@app.get("/")
+async def root():
+    """Root endpoint for debugging"""
+    return {
+        "message": "API is running",
+        "version": "1.0",
+        "endpoints": [
+            "/health",
+            "/chat",
+            "/ws"
+        ]
+    }
 
 if __name__ == "__main__":
     import uvicorn
