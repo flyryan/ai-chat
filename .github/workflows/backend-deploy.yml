@@ -47,10 +47,8 @@ jobs:
             "VECTOR_SEARCH_ENDPOINT": "${{ secrets.VECTOR_SEARCH_ENDPOINT }}",
             "VECTOR_SEARCH_KEY": "${{ secrets.VECTOR_SEARCH_KEY }}",
             "VECTOR_SEARCH_INDEX": "${{ secrets.VECTOR_SEARCH_INDEX }}",
-            "CORS_ORIGINS": "${{ secrets.CORS_ORIGINS }}",
-            "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}",
-            "WEBSITE_ENABLE_APP_SERVICE_STORAGE": "true",
-            "WEBSITE_CONTAINER_SETTINGS": "{ \"environment_variables\": { \"APP_NAME\": \"${{ secrets.APP_NAME }}\", \"OPENAI_API_KEY\": \"${{ secrets.OPENAI_API_KEY }}\", \"OPENAI_API_BASE\": \"${{ secrets.OPENAI_API_BASE }}\", \"OPENAI_API_VERSION\": \"${{ secrets.OPENAI_API_VERSION }}\", \"OPENAI_DEPLOYMENT_NAME\": \"${{ secrets.OPENAI_DEPLOYMENT_NAME }}\", \"VECTOR_SEARCH_ENABLED\": \"${{ secrets.VECTOR_SEARCH_ENABLED }}\", \"VECTOR_SEARCH_ENDPOINT\": \"${{ secrets.VECTOR_SEARCH_ENDPOINT }}\", \"VECTOR_SEARCH_KEY\": \"${{ secrets.VECTOR_SEARCH_KEY }}\", \"VECTOR_SEARCH_INDEX\": \"${{ secrets.VECTOR_SEARCH_INDEX }}\", \"CORS_ORIGINS\": \"${{ secrets.CORS_ORIGINS }}\", \"SYSTEM_PROMPT\": \"${{ secrets.SYSTEM_PROMPT }}\" } }"
+            "CORS_ORIGINS": "https://*.azurestaticapps.net,${{ secrets.CORS_ORIGINS }}",
+            "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}"
           }' > appsettings.json
 
           # Update app settings

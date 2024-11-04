@@ -20,6 +20,9 @@ logger.info("Starting application...")
 
 app = FastAPI(title=settings.app_name)
 
+# Log CORS settings
+logger.info(f"Configuring CORS with origins: {settings.cors_origins}")
+
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +30,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 class ChatMessage(BaseModel):
