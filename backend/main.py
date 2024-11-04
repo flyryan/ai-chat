@@ -72,7 +72,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    max_tokens: Optional[int] = 800
+    max_tokens: Optional[int] = 4000
     temperature: Optional[float] = 0.7
 
 # Initialize Azure OpenAI client with proper configuration
