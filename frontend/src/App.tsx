@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader, AlertTriangle } from 'lucide-react';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
@@ -31,36 +31,55 @@ interface Message {
   timestamp: string;
 }
 
-const fetchWithCreds = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const defaultOptions: RequestInit = {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    mode: 'cors',
-  };
+interface ChatResponse {
+  response: string;
+  timestamp: string;
+}
 
-  const response = await fetch(url, {
-    ...defaultOptions,
-    ...options,
-    headers: {
-      ...defaultOptions.headers,
-      ...options.headers,
-    },
-  });
+// HTTP fallback function
+const sendMessageHttp = async (requestBody: any): Promise<ChatResponse> => {
+  const url = `${config.API_URL}/chat`;
+  console.log('Sending HTTP request to:', url);
+  console.log('Request body:', requestBody);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+      credentials: 'include',
+      mode: 'cors',
+    });
 
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    console.log('Response status:', response.status);
+    const data = await response.json();
+    console.log('Response data:', data);
+    return data;
+  } catch (error: unknown) {
+    console.error('HTTP request failed:', error);
+    if (error instanceof Error) {
+      throw error;
+    } else if (typeof error === 'object' && error !== null) {
+      const errorObj = error as { status?: number; message?: string };
+      throw new Error(`Error code: ${errorObj.status || 'unknown'} - ${JSON.stringify(errorObj)}`);
+    } else {
+      throw new Error('An unknown error occurred');
+    }
   }
-
-  return response;
 };
 
-const ConnectionStatus: React.FC<{ wsConnected: boolean, useHttpFallback: boolean, reconnectAttempt: number }> = ({ 
+const ConnectionStatus: React.FC<{ 
+  wsConnected: boolean, 
+  useHttpFallback: boolean 
+}> = ({ 
   wsConnected, 
-  useHttpFallback, 
-  reconnectAttempt 
+  useHttpFallback
 }) => (
   <div className="flex items-center gap-2 text-sm">
     <span 
@@ -69,125 +88,232 @@ const ConnectionStatus: React.FC<{ wsConnected: boolean, useHttpFallback: boolea
       }`} 
     />
     {useHttpFallback ? 'Using HTTP Mode' : 
-     wsConnected ? 'Connected' : 
-     reconnectAttempt > 0 ? `Reconnecting... ${reconnectAttempt}/${config.MAX_RECONNECT_ATTEMPTS}` :
-     'Disconnected'}
+     wsConnected ? 'Connected' : 'Disconnected'}
   </div>
 );
+
+interface WebSocketManagerOptions {
+  url: string;
+  maxReconnectAttempts: number;
+  onMessage: (data: string) => void;
+  onConnectionChange: (connected: boolean) => void;
+  onError: (error: string) => void;
+}
+
+class WebSocketManager {
+  private ws: WebSocket | null = null;
+  private reconnectAttempt = 0;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private messageQueue: string[] = [];
+  private connecting = false;
+  private options: WebSocketManagerOptions;
+  private closedIntentionally = false;
+  private lastConnectAttempt = 0;
+  private static instance: WebSocketManager | null = null;
+  
+  private constructor(options: WebSocketManagerOptions) {
+    this.options = options;
+  }
+
+  static getInstance(options: WebSocketManagerOptions): WebSocketManager {
+    if (!WebSocketManager.instance) {
+      WebSocketManager.instance = new WebSocketManager(options);
+    }
+    return WebSocketManager.instance;
+  }
+
+  connect() {
+    const now = Date.now();
+    const timeSinceLastAttempt = now - this.lastConnectAttempt;
+    
+    if (
+      this.ws?.readyState === WebSocket.OPEN || 
+      this.connecting ||
+      timeSinceLastAttempt < 1000  // Prevent attempts more frequent than 1 second
+    ) {
+      return;
+    }
+
+    this.lastConnectAttempt = now;
+    this.connecting = true;
+    this.closedIntentionally = false;
+
+    try {
+      if (this.ws) {
+        this.ws.close();
+        this.ws = null;
+      }
+
+      console.log('Connecting to WebSocket:', this.options.url);
+      this.ws = new WebSocket(this.options.url);
+      
+      this.ws.onopen = this.handleOpen.bind(this);
+      this.ws.onclose = this.handleClose.bind(this);
+      this.ws.onerror = this.handleError.bind(this);
+      this.ws.onmessage = this.handleMessage.bind(this);
+
+    } catch (error) {
+      console.error('Error creating WebSocket:', error);
+      this.connecting = false;
+      this.options.onError('Failed to create connection');
+    }
+  }
+
+  private handleOpen() {
+    console.log('WebSocket connected');
+    this.connecting = false;
+    this.reconnectAttempt = 0;
+    this.options.onConnectionChange(true);
+    
+    while (this.messageQueue.length > 0) {
+      const message = this.messageQueue.shift();
+      if (message) this.send(message);
+    }
+  }
+
+  private handleClose() {
+    console.log('WebSocket closed');
+    this.options.onConnectionChange(false);
+    this.connecting = false;
+    this.ws = null;
+
+    if (!this.closedIntentionally && this.reconnectAttempt < this.options.maxReconnectAttempts) {
+      const backoffDelay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), 10000);
+      console.log(`Reconnecting in ${backoffDelay}ms (attempt ${this.reconnectAttempt + 1})`);
+      
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+      }
+      
+      this.reconnectTimeout = setTimeout(() => {
+        this.reconnectAttempt++;
+        this.connect();
+      }, backoffDelay);
+    }
+  }
+
+  private handleError(error: Event) {
+    console.error('WebSocket error:', error);
+    this.options.onError('Connection error');
+  }
+
+  private handleMessage(event: MessageEvent) {
+    this.options.onMessage(event.data);
+  }
+
+  send(message: string): boolean {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(message);
+      return true;
+    } else if (this.connecting && this.messageQueue.length < 10) { // Limit queued messages
+      this.messageQueue.push(message);
+      return true;
+    }
+    return false;
+  }
+
+  disconnect() {
+    this.closedIntentionally = true;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.messageQueue = [];
+    this.connecting = false;
+    this.reconnectAttempt = 0;
+    WebSocketManager.instance = null;
+  }
+
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+}
 
 export default function ChatApp() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
-  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [useHttpFallback, setUseHttpFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const connectWebSocket = useCallback(() => {
-    if (reconnectAttempt >= config.MAX_RECONNECT_ATTEMPTS) {
-      setUseHttpFallback(true);
-      setWsConnected(false);
-      return;
-    }
-
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-
-    try {
-      console.log('Connecting to WebSocket:', config.WS_URL);
-      const wsInstance = new WebSocket(config.WS_URL);
-      
-      wsInstance.onopen = () => {
-        console.log('WebSocket connected');
-        setWsConnected(true);
-        setUseHttpFallback(false);
-        setReconnectAttempt(0);
-        setError(null);
-      };
-
-      wsInstance.onclose = () => {
-        console.log('WebSocket closed');
-        setWsConnected(false);
-        ws.current = null;
-    
-        if (reconnectAttempt < config.MAX_RECONNECT_ATTEMPTS) {
-          const backoffDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 10000);
-          setReconnectAttempt(prev => prev + 1);
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, backoffDelay);
-        } else {
-          setUseHttpFallback(true);
+  // Initial health check
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${config.API_URL}/health`, {
+          credentials: 'include',
+          mode: 'cors',
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Health check failed: ${response.status}`);
         }
-      };
+        
+        const data = await response.json();
+        console.log('Health check response:', data);
+        setInitError(null);
+      } catch (error) {
+        console.error('Health check error:', error);
+        setInitError('Could not connect to chat service. Please try again later.');
+      }
+    };
 
-      wsInstance.onerror = (event) => {
-        console.error('WebSocket error:', event);
-        setError('WebSocket connection error');
-      };
+    checkHealth();
+  }, []);
 
-      wsInstance.onmessage = (event) => {
-        try {
+  // WebSocket connection effect
+  useEffect(() => {
+    if (!useHttpFallback) {
+      const manager = WebSocketManager.getInstance({
+        url: config.WS_URL,
+        maxReconnectAttempts: config.MAX_RECONNECT_ATTEMPTS,
+        onMessage: (data: string) => {
           setMessages(prev => {
             const newMessages = [...prev];
             if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
               const lastMessage = { ...newMessages[newMessages.length - 1] };
-              lastMessage.content += event.data;
+              lastMessage.content += data;
               newMessages[newMessages.length - 1] = lastMessage;
             } else {
               newMessages.push({
                 role: 'assistant',
-                content: event.data,
+                content: data,
                 timestamp: new Date().toISOString()
               });
             }
             return newMessages;
           });
-        } catch (error) {
-          console.error('Error processing message:', error);
-          setError('Error processing message');
+        },
+        onConnectionChange: (connected: boolean) => {
+          setWsConnected(connected);
+          if (connected) {
+            setError(null);
+            setUseHttpFallback(false);
+          }
+        },
+        onError: (errorMessage: string) => {
+          setError(errorMessage);
         }
-      };
-
-      ws.current = wsInstance;
-    } catch (error) {
-      console.error('Error creating WebSocket:', error);
-      setWsConnected(false);
-      setUseHttpFallback(true);
-    }
-  }, [reconnectAttempt]);
-
-  const sendMessageHttp = async (requestBody: any) => {
-    const url = `${config.API_URL}/chat`;
-    console.log('Sending HTTP request to:', url);
-    console.log('Request body:', requestBody);
-    
-    try {
-      const response = await fetchWithCreds(url, {
-        method: 'POST',
-        body: JSON.stringify(requestBody),
       });
+      manager.connect();
 
-      console.log('Response status:', response.status);
-      const data = await response.json();
-      console.log('Response data:', data);
-      return data;
-    } catch (error: unknown) {
-      console.error('HTTP request failed:', error);
-      if (error instanceof Error) {
-        throw error;
-      } else if (typeof error === 'object' && error !== null) {
-        const errorObj = error as { status?: number; message?: string };
-        throw new Error(`Error code: ${errorObj.status || 'unknown'} - ${JSON.stringify(errorObj)}`);
-      } else {
-        throw new Error('An unknown error occurred');
-      }
+      return () => {
+        manager.disconnect();
+      };
     }
-  };
+  }, [useHttpFallback]);
+
+  // Scroll to bottom effect
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -214,8 +340,23 @@ export default function ChatApp() {
         temperature: config.DEFAULT_TEMPERATURE
       };
 
-      if (!useHttpFallback && wsConnected && ws.current?.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify(requestBody));
+      if (!useHttpFallback && WebSocketManager.getInstance({
+        url: config.WS_URL,
+        maxReconnectAttempts: config.MAX_RECONNECT_ATTEMPTS,
+        onMessage: () => {},
+        onConnectionChange: () => {},
+        onError: () => {}
+      }).isConnected()) {
+        const sent = WebSocketManager.getInstance({
+          url: config.WS_URL,
+          maxReconnectAttempts: config.MAX_RECONNECT_ATTEMPTS,
+          onMessage: () => {},
+          onConnectionChange: () => {},
+          onError: () => {}
+        }).send(JSON.stringify(requestBody));
+        if (!sent) {
+          throw new Error("Failed to send message via WebSocket");
+        }
       } else {
         const data = await sendMessageHttp(requestBody);
         setMessages(prev => [...prev, {
@@ -232,40 +373,6 @@ export default function ChatApp() {
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (!useHttpFallback) {
-      connectWebSocket();
-    }
-  
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      ws.current?.close();
-    };
-  }, [connectWebSocket, useHttpFallback]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Initial health check
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const response = await fetchWithCreds(`${config.API_URL}/health`);
-        const data = await response.json();
-        console.log('Health check response:', data);
-        setInitError(null);
-      } catch (error) {
-        console.error('Health check error:', error);
-        setInitError('Could not connect to chat service. Please try again later.');
-      }
-    };
-
-    checkHealth();
-  }, []);
 
   if (initError) {
     return (
@@ -294,7 +401,6 @@ export default function ChatApp() {
         <ConnectionStatus 
           wsConnected={wsConnected}
           useHttpFallback={useHttpFallback}
-          reconnectAttempt={reconnectAttempt}
         />
         {error && (
           <div className="mt-2 text-sm text-red-600">

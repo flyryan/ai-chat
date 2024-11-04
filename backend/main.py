@@ -1,4 +1,11 @@
 import logging
+import contextlib
+import weakref
+from typing import Set, Optional, Dict
+import asyncio
+from fastapi import WebSocket, WebSocketDisconnect, status
+import aiohttp
+import time
 
 # Configure logging first
 logging.basicConfig(
@@ -130,8 +137,46 @@ def prepare_vector_search_config() -> Dict[str, Any]:
         }]
     }
 
+class StreamMetrics:
+    def __init__(self):
+        self.start_time = time.time()
+        self.chunk_count = 0
+        self.total_tokens = 0
+        self.errors = 0
+        
+    def record_chunk(self, chunk):
+        self.chunk_count += 1
+        if hasattr(chunk, 'usage') and hasattr(chunk.usage, 'total_tokens'):
+            self.total_tokens += chunk.usage.total_tokens
+            
+    def record_error(self):
+        self.errors += 1
+        
+    def get_metrics(self):
+        duration = time.time() - self.start_time
+        return {
+            "duration_seconds": round(duration, 2),
+            "chunk_count": self.chunk_count,
+            "total_tokens": self.total_tokens,
+            "errors": self.errors,
+            "chunks_per_second": round(self.chunk_count / duration if duration > 0 else 0, 2)
+        }
+
+async def monitor_stream(stream):
+    metrics = StreamMetrics()
+    try:
+        async for chunk in stream:
+            try:
+                metrics.record_chunk(chunk)
+                yield chunk
+            except Exception as e:
+                metrics.record_error()
+                logger.error(f"Error processing chunk: {e}")
+    finally:
+        logger.info(f"Stream metrics: {metrics.get_metrics()}")
+
 async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: int, temperature: float, stream: bool = False):
-    """Generate chat completion with updated vector search configuration"""
+    """Generate chat completion with robust stream handling"""
     try:
         completion_kwargs = {
             "model": settings.openai_deployment_name,
@@ -145,11 +190,40 @@ async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: i
         }
         
         if settings.vector_search_enabled:
-            completion_kwargs.update(prepare_vector_search_config())
+            completion_kwargs["extra_body"] = {
+                "dataSources": [{
+                    "type": "azure_search",
+                    "parameters": {
+                        "endpoint": str(settings.vector_search_endpoint),
+                        "key": settings.vector_search_key,
+                        "indexName": settings.vector_search_index,
+                        "semanticConfiguration": "azureml-default",
+                        "queryType": "vector_simple_hybrid",
+                        "inScope": True,
+                        "roleInformation": settings.system_prompt,
+                        "strictness": 3,
+                        "topNDocuments": 5,
+                        "embeddingEndpoint": f"{settings.openai_api_base}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
+                        "embeddingKey": settings.openai_api_key
+                    }
+                }]
+            }
             logger.info("Vector search configuration added to completion request")
         
         logger.debug(f"Calling OpenAI with parameters: {completion_kwargs}")
-        return await client.chat.completions.create(**completion_kwargs)
+        
+        if stream:
+            async def process_stream():
+                try:
+                    for chunk in client.chat.completions.create(**completion_kwargs):
+                        yield chunk
+                except Exception as e:
+                    logger.error(f"Error in stream processing: {str(e)}")
+                    raise
+            return monitor_stream(process_stream())
+        else:
+            completion = client.chat.completions.create(**completion_kwargs)
+            return completion
         
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}")
@@ -164,10 +238,10 @@ async def validate_openai_config():
     try:
         logger.info(f"Validating OpenAI configuration...")
         logger.info(f"API Base: {settings.openai_api_base}")
-        logger.info(f"API Version: settings.openai_api_version")
+        logger.info(f"API Version: {settings.openai_api_version}")
         logger.info(f"Deployment Name: {settings.openai_deployment_name}")
         
-        test_completion = await client.chat.completions.create(
+        test_completion = client.chat.completions.create(
             model=settings.openai_deployment_name,
             messages=[{"role": "user", "content": "test"}],
             max_tokens=10,
@@ -248,13 +322,109 @@ async def chat(request: ChatRequest):
             detail=str(e)
         )
 
+class ConnectionManager:
+    def __init__(self, max_connections: int = 100, timeout: int = 600):
+        self.active_connections: Dict[str, WebSocket] = {}  # Change to dict for better tracking
+        self.max_connections = max_connections
+        self.timeout = timeout
+        self.connection_times: Dict[str, datetime] = {}
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket) -> bool:
+        client_id = f"{websocket.client.host}:{websocket.client.port}"
+        
+        async with self._lock:
+            # Check if this client already has a connection
+            if client_id in self.active_connections:
+                logger.warning(f"Client {client_id} already has an active connection")
+                try:
+                    await self.active_connections[client_id].close()
+                except Exception:
+                    pass
+                del self.active_connections[client_id]
+                del self.connection_times[client_id]
+
+            # Check total connections
+            if len(self.active_connections) >= self.max_connections:
+                logger.warning(f"Maximum connection limit reached ({self.max_connections})")
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return False
+
+            try:
+                await websocket.accept()
+                self.active_connections[client_id] = websocket
+                self.connection_times[client_id] = datetime.now()
+                logger.info(f"Client {client_id} connected. Active connections: {len(self.active_connections)}")
+                
+                if self._cleanup_task is None or self._cleanup_task.done():
+                    self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+                
+                return True
+            except Exception as e:
+                logger.error(f"Error accepting connection from {client_id}: {e}")
+                return False
+
+    async def disconnect(self, websocket: WebSocket):
+        client_id = f"{websocket.client.host}:{websocket.client.port}"
+        async with self._lock:
+            if client_id in self.active_connections:
+                del self.active_connections[client_id]
+                if client_id in self.connection_times:
+                    del self.connection_times[client_id]
+                logger.info(f"Client {client_id} disconnected. Active connections: {len(self.active_connections)}")
+            
+            with contextlib.suppress(Exception):
+                await websocket.close()
+
+    async def _periodic_cleanup(self):
+        while True:
+            try:
+                await asyncio.sleep(30)  # Check every 30 seconds
+                async with self._lock:
+                    now = datetime.now()
+                    stale_connections = []
+                    
+                    for client_id, ws in self.active_connections.items():
+                        if not ws.client_state.connected:
+                            stale_connections.append(client_id)
+                        elif (now - self.connection_times[client_id]).total_seconds() > self.timeout:
+                            stale_connections.append(client_id)
+                    
+                    for client_id in stale_connections:
+                        if client_id in self.active_connections:
+                            await self.disconnect(self.active_connections[client_id])
+                            
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}")
+
+    def get_connection_count(self) -> int:
+        return len(self.active_connections)
+
+    def get_connection_info(self) -> dict:
+        return {
+            "total_connections": len(self.active_connections),
+            "max_connections": self.max_connections,
+            "clients": [
+                {
+                    "id": client_id,
+                    "connected_at": self.connection_times[client_id].isoformat(),
+                    "duration": (datetime.now() - self.connection_times[client_id]).total_seconds()
+                }
+                for client_id in self.active_connections
+            ]
+        }
+
+# Initialize the connection manager
+manager = ConnectionManager()
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time chat functionality"""
+    """WebSocket endpoint for real-time chat functionality with proper stream handling"""
     try:
-        await websocket.accept()
-        logger.info("WebSocket connection accepted")
-        
+        if not await manager.connect(websocket):
+            return
+
         while True:
             try:
                 data = await websocket.receive_text()
@@ -272,7 +442,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     chat_request = ChatRequest(**request_data)
-                    logger.debug(f"Validated chat request: {chat_request}")
                 except Exception as e:
                     error_msg = f"Invalid request format: {str(e)}"
                     logger.error(error_msg)
@@ -286,19 +455,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     for m in chat_request.messages
                 ]
                 
-                logger.debug(f"Prepared messages: {messages}")
-                
                 try:
-                    completion = await generate_chat_completion(
+                    stream = await generate_chat_completion(
                         messages=messages,
                         max_tokens=chat_request.max_tokens,
                         temperature=chat_request.temperature,
                         stream=True
                     )
                     
-                    async for chunk in completion:
-                        if chunk.choices[0].delta.content:
-                            await websocket.send_text(chunk.choices[0].delta.content)
+                    async for chunk in stream:
+                        if not chunk or not chunk.choices:
+                            logger.debug("Received empty chunk, skipping")
+                            continue
+                            
+                        try:
+                            delta = chunk.choices[0].delta
+                            if hasattr(delta, 'content') and delta.content:
+                                logger.debug(f"Sending chunk: {delta.content[:50]}...")
+                                await websocket.send_text(delta.content)
+                        except (AttributeError, IndexError) as e:
+                            logger.debug(f"Skipping invalid chunk: {e}")
+                            continue
                             
                 except Exception as e:
                     error_msg = f"OpenAI API error: {str(e)}"
@@ -306,9 +483,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.exception(e)
                     await websocket.send_text(f"Error: {str(e)}")
                     
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {str(e)}")
-                await websocket.send_text("Invalid JSON format")
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected")
+                break
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
                 logger.exception(e)
@@ -317,6 +494,8 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket connection error: {str(e)}")
         logger.exception(e)
+    finally:
+        await manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn
