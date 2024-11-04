@@ -1,9 +1,4 @@
 import logging
-import re
-from fastapi import FastAPI, HTTPException, WebSocket, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from config import settings
 
 # Configure logging first
 logging.basicConfig(
@@ -14,6 +9,18 @@ logger = logging.getLogger(__name__)
 
 logger.info("Starting application initialization...")
 
+from fastapi import FastAPI, HTTPException, WebSocket, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
+import json
+import re
+from openai import AzureOpenAI
+from config import settings
+
+# Create FastAPI app
 app = FastAPI(title=settings.app_name)
 
 def get_allowed_origins():
@@ -44,6 +51,7 @@ def is_origin_allowed(origin: str, allowed_origins) -> bool:
 allowed_origins = get_allowed_origins()
 logger.info(f"Configured CORS origins: {settings.cors_origins}")
 
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # We'll handle validation ourselves
@@ -74,12 +82,6 @@ async def cors_middleware(request, call_next):
     
     return response
 
-from pydantic import BaseModel
-from typing import List, Optional
-import json
-from openai import AzureOpenAI
-from datetime import datetime
-
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -97,6 +99,19 @@ client = AzureOpenAI(
     azure_endpoint=str(settings.openai_api_base)
 )
 
+@app.get("/")
+async def root():
+    """Root endpoint for debugging"""
+    return {
+        "message": "API is running",
+        "version": "1.0",
+        "endpoints": [
+            "/health",
+            "/chat",
+            "/ws"
+        ]
+    }
+
 @app.get("/health")
 async def health():
     """Health check endpoint that returns configuration status"""
@@ -107,55 +122,6 @@ async def health():
         "vector_search_enabled": settings.vector_search_enabled,
         "timestamp": datetime.now().isoformat()
     }
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time chat functionality"""
-    try:
-        await websocket.accept()
-        logger.info("WebSocket connection accepted")
-        
-        while True:
-            try:
-                data = await websocket.receive_text()
-                logger.debug(f"Received WebSocket message: {data[:100]}...")
-                
-                request_data = json.loads(data)
-                chat_request = ChatRequest(**request_data)
-                
-                messages = [
-                    {"role": "system", "content": settings.system_prompt}
-                ] + [
-                    {"role": m.role, "content": m.content} 
-                    for m in chat_request.messages
-                ]
-                
-                try:
-                    response = client.chat.completions.create(
-                        model=settings.openai_deployment_name,
-                        messages=messages,
-                        max_tokens=chat_request.max_tokens,
-                        temperature=chat_request.temperature,
-                        stream=True
-                    )
-                    
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            await websocket.send_text(chunk.choices[0].delta.content)
-                            
-                except Exception as e:
-                    logger.error(f"Error in OpenAI API call: {str(e)}")
-                    await websocket.send_text(f"Error: {str(e)}")
-                    
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {str(e)}")
-                await websocket.send_text("Invalid JSON format")
-            except Exception as e:
-                logger.error(f"Error processing message: {str(e)}")
-                await websocket.send_text(f"Error: {str(e)}")
-                
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {str(e)}")
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -192,15 +158,11 @@ async def chat(request: ChatRequest):
                     "indexName": settings.vector_search_index,
                     "roleInformation": settings.system_prompt,
                     "filter": None,
-                    "semanticConfiguration": settings.vector_search_semantic_config,
-                    "queryType": settings.vector_search_query_type,
-                    "strictness": settings.vector_search_strictness,
-                    "topNDocuments": settings.vector_search_top_n,
-                    "inScope": True,
+                    "inScope": True
                 }
             }]
 
-        logger.debug(f"Calling OpenAI with kwargs: {completion_kwargs}")
+        logger.debug(f"Calling OpenAI with model: {settings.openai_deployment_name}")
         completion = client.chat.completions.create(**completion_kwargs)
         logger.debug(f"Received completion: {completion}")
 
@@ -212,31 +174,95 @@ async def chat(request: ChatRequest):
         return response_data
         
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {e}")
+        logger.error(f"Error in chat endpoint: {str(e)}")
+        logger.exception(e)  # Log full stack trace
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
 
-# Add root endpoint for debugging
-@app.get("/")
-async def root():
-    """Root endpoint for debugging"""
-    return {
-        "message": "API is running",
-        "version": "1.0",
-        "endpoints": [
-            "/health",
-            "/chat",
-            "/ws"
-        ]
-    }
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time chat functionality"""
+    try:
+        await websocket.accept()
+        logger.info("WebSocket connection accepted")
+        
+        while True:
+            try:
+                data = await websocket.receive_text()
+                logger.info("Received WebSocket message")
+                logger.debug(f"Message content: {data[:100]}...")
+                
+                request_data = json.loads(data)
+                chat_request = ChatRequest(**request_data)
+                
+                logger.info("Current configuration:")
+                logger.info(f"OpenAI Model: {settings.openai_deployment_name}")
+                logger.info(f"Vector Search Enabled: {settings.vector_search_enabled}")
+                if settings.vector_search_enabled:
+                    logger.info(f"Vector Search Index: {settings.vector_search_index}")
+                
+                messages = [
+                    {"role": "system", "content": settings.system_prompt}
+                ] + [
+                    {"role": m.role, "content": m.content} 
+                    for m in chat_request.messages
+                ]
+                
+                try:
+                    logger.info("Calling OpenAI API")
+                    completion_kwargs = {
+                        "model": settings.openai_deployment_name,
+                        "messages": messages,
+                        "max_tokens": chat_request.max_tokens,
+                        "temperature": chat_request.temperature,
+                        "stream": True
+                    }
+
+                    # Add vector search if enabled
+                    if settings.vector_search_enabled:
+                        logger.info("Vector search enabled, adding data sources")
+                        completion_kwargs["dataSources"] = [{
+                            "type": "azure_search",
+                            "parameters": {
+                                "endpoint": str(settings.vector_search_endpoint),
+                                "key": settings.vector_search_key,
+                                "indexName": settings.vector_search_index,
+                                "roleInformation": settings.system_prompt,
+                                "filter": None,
+                                "inScope": True
+                            }
+                        }]
+
+                    completion = client.chat.completions.create(**completion_kwargs)
+                    
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content:
+                            await websocket.send_text(chunk.choices[0].delta.content)
+                            
+                except Exception as e:
+                    logger.error(f"Error in OpenAI API call: {str(e)}")
+                    logger.exception(e)  # Log full stack trace
+                    await websocket.send_text(f"Error: {str(e)}")
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error: {str(e)}")
+                await websocket.send_text("Invalid JSON format")
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}")
+                logger.exception(e)  # Log full stack trace
+                await websocket.send_text(f"Error: {str(e)}")
+                
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {str(e)}")
+        logger.exception(e)  # Log full stack trace
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.is_development
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug
     )
