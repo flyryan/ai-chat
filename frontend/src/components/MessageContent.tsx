@@ -60,18 +60,35 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }
   };
 
+  // Modified codespan renderer to handle backticks
   renderer.codespan = (text) => {
-    // Use the raw text without any backticks
-    const cleanText = text.replace(/^`|`$/g, '').replace(/\\`/g, '');
-    return `<code>${cleanText}</code>`;
+    // Remove any surrounding backticks and escape sequences
+    const cleanText = text
+      .replace(/^`+|`+$/g, '') // Remove backticks at start/end
+      .replace(/\\`/g, '`')     // Replace escaped backticks with single backticks
+      .replace(/`/g, '');       // Remove any remaining backticks
+    
+    return `<code class="inline-code">${cleanText}</code>`;
   };
 
-  // Override the lexer's rules for inline code
-  const originalInlineCodeRule = marked.Lexer.rules.inline.code;
-  marked.Lexer.rules.inline.code = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/;
+  // Extension for the marked tokenizer
+  const tokenizer = {
+    codespan(src: string) {
+      const match = src.match(/^(?:``+|\`)([\s\S]*?)(?:\`\`+|\`)/);
+      if (match) {
+        return {
+          type: 'codespan',
+          raw: match[0],
+          text: match[1].trim()
+        };
+      }
+      return false;
+    }
+  };
 
   marked.setOptions({
     renderer,
+    tokenizer,
     gfm: true,
     breaks: true,
     headerIds: false,
@@ -84,18 +101,10 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-white'
   }`;
 
-  // Clean up after we're done to not affect other instances
-  const cleanup = () => {
-    marked.Lexer.rules.inline.code = originalInlineCodeRule;
-  };
-
-  const html = marked(content);
-  cleanup();
-
   return (
     <div 
       className={messageClasses}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: marked(content) }}
     />
   );
 };
