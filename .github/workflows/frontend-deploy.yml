@@ -19,19 +19,29 @@ jobs:
       with:
         node-version: '18'
         
+    - name: Clear npm cache
+      run: |
+        cd frontend
+        rm -rf node_modules
+        rm -f package-lock.json
+        npm cache clean --force
+        
     - name: Install dependencies
       run: |
         cd frontend
-        npm install --legacy-peer-deps
-        npm install react-scripts --legacy-peer-deps
+        npm install
+        
+    - name: Debug node_modules
+      run: |
+        cd frontend
+        ls -la node_modules
+        ls -la node_modules/.bin
         
     - name: Build
       run: |
         cd frontend
-        export NODE_OPTIONS=--openssl-legacy-provider
-        npm run build
+        CI=false npm run build
       env:
-        CI: false
         REACT_APP_APP_NAME: ${{ secrets.APP_NAME }}
         REACT_APP_API_URL: ${{ secrets.API_URL }}
         REACT_APP_WS_URL: ${{ secrets.WS_URL }}
