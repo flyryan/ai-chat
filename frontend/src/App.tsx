@@ -171,14 +171,30 @@ export default function ChatApp() {
         method: 'POST',
         body: JSON.stringify(requestBody),
       });
+    const url = `${config.API_URL}/chat`;
+    console.log('Sending HTTP request to:', url);
+    console.log('Request body:', requestBody);
+    
+    try {
+      const response = await fetchWithCreds(url, {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      });
 
       console.log('Response status:', response.status);
       const data = await response.json();
       console.log('Response data:', data);
       return data;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('HTTP request failed:', error);
-      throw new Error(`Error code: ${error.status} - ${JSON.stringify(error)}`);
+      if (error instanceof Error) {
+        throw error;
+      } else if (typeof error === 'object' && error !== null) {
+        const errorObj = error as { status?: number; message?: string };
+        throw new Error(`Error code: ${errorObj.status || 'unknown'} - ${JSON.stringify(errorObj)}`);
+      } else {
+        throw new Error('An unknown error occurred');
+      }
     }
   };
 
@@ -219,7 +235,7 @@ export default function ChatApp() {
       }
     } catch (error) {
       console.error('Failed to send message:', error);
-      setError('Failed to send message. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
       setMessages(prev => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
