@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { 
-  Send, Loader, Bold, Italic, Code
-} from 'lucide-react';
+import { Send, Loader } from 'lucide-react';
 import { marked } from 'marked';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
@@ -10,6 +8,7 @@ import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
+import MarkdownEditor from './components/MarkdownEditor';
 
 const BACKEND_URL = process.env.REACT_APP_API_URL || 'https://ludus-chat-backend.azurewebsites.net';
 const WS_URL = process.env.REACT_APP_WS_URL || 'wss://ludus-chat-backend.azurewebsites.net/ws';
@@ -62,7 +61,6 @@ export default function ChatApp() {
   const [useHttpFallback, setUseHttpFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -346,33 +344,6 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const formatText = (formatType: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = input.substring(start, end);
-    let formattedText = '';
-
-    switch (formatType) {
-      case 'bold':
-        formattedText = `**${selectedText}**`;
-        break;
-      case 'italic':
-        formattedText = `*${selectedText}*`;
-        break;
-      case 'code':
-        formattedText = `\`${selectedText}\``;
-        break;
-      default:
-        return;
-    }
-
-    const newText = input.substring(0, start) + formattedText + input.substring(end);
-    setInput(newText);
-  };
-
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <div className="p-4 bg-white shadow-sm">
@@ -433,46 +404,14 @@ export default function ChatApp() {
       </div>
 
       <div className="p-4 bg-white shadow-lg">
-        <div className="border rounded-lg mb-4">
-          <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-gray-50">
-            <button
-              onClick={() => formatText('bold')}
-              className="p-2 rounded hover:bg-gray-100"
-              title="Bold"
-            >
-              <Bold className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => formatText('italic')}
-              className="p-2 rounded hover:bg-gray-100"
-              title="Italic"
-            >
-              <Italic className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => formatText('code')}
-              className="p-2 rounded hover:bg-gray-100"
-              title="Code"
-            >
-              <Code className="w-4 h-4" />
-            </button>
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Type your message... (Shift + Enter for new line)"
-            className="w-full p-3 focus:outline-none min-h-[100px] resize-none"
-            rows={4}
-          />
-        </div>
-        <div className="flex justify-end">
+        <MarkdownEditor
+          value={input}
+          onChange={setInput}
+          onSubmit={sendMessage}
+          placeholder="Type your message... (Shift + Enter for new line)"
+          disabled={isLoading}
+        />
+        <div className="flex justify-end mt-4">
           <button
             onClick={sendMessage}
             disabled={isLoading || !input.trim()}
