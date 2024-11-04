@@ -7,7 +7,12 @@ import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
 
-const MessageContent = ({ content, role }) => {
+interface MessageContentProps {
+  content: string;
+  role: 'user' | 'assistant';
+}
+
+const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   useEffect(() => {
     Prism.highlightAll();
   }, [content]);
