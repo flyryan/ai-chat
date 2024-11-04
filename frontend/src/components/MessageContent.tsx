@@ -1,13 +1,22 @@
 import React, { useEffect } from 'react';
-import { marked } from 'marked';
+
+// Import Prism core and themes first
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-typescript';
+
+// Then import languages
+import 'prismjs/components/prism-markup';
+import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-markdown';
+
+// Then import marked
+import { marked } from 'marked';
 
 interface MessageContentProps {
   content: string;
@@ -16,6 +25,7 @@ interface MessageContentProps {
 
 const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   useEffect(() => {
+    // Highlight all code blocks after render
     Prism.highlightAll();
   }, [content]);
 
@@ -64,13 +74,6 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       return `<code class="inline-code">${text}</code>`;
     }
   };
-
-  marked.setOptions({
-    gfm: true,
-    breaks: true,
-    headerIds: false,
-    mangle: false
-  });
 
   marked.use({ renderer });
 

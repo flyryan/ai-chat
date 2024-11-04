@@ -1,13 +1,34 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Loader, AlertTriangle } from 'lucide-react';
-import { marked } from 'marked';
+
+// Import Prism core and themes first
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-typescript';
+
+// Then import languages
+import 'prismjs/components/prism-markup';
+import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-markdown';
+
+// Then import marked
+import { marked } from 'marked';
+
+// Configure marked to use Prism
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (Prism.languages[lang]) {
+      return Prism.highlight(code, Prism.languages[lang], lang);
+    }
+    return code;
+  }
+});
+
 import MarkdownEditor from './components/MarkdownEditor';
 import { config } from './config';
 
