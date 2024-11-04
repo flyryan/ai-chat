@@ -63,6 +63,12 @@
   white-space: nowrap !important;
 }
 
+/* Override the default behavior of adding backticks before and after code elements */
+.prose code::before,
+.prose code::after {
+  content: none !important;
+}
+
 /* Assistant message container spacing */
 .justify-start > div {
   margin-top: 1rem !important;

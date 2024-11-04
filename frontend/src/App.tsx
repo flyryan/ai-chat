@@ -1,29 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader, AlertTriangle } from 'lucide-react';
-import Prism from 'prismjs';
-import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/components/prism-markup';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/components/prism-markdown';
 import { marked } from 'marked';
 import MarkdownEditor from './components/MarkdownEditor';
 import { config } from './config';
-
-// Configure marked to use Prism
-marked.setOptions({
-  highlight: function(code, lang) {
-    if (Prism.languages[lang]) {
-      return Prism.highlight(code, Prism.languages[lang], lang);
-    }
-    return code;
-  }
-});
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -35,6 +14,17 @@ interface ChatResponse {
   response: string;
   timestamp: string;
 }
+
+// Configure marked
+const renderer = new marked.Renderer();
+
+renderer.codespan = function(text: string) {
+  // Remove only the outermost backticks if they exist
+  text = text.replace(/^`|`$/g, '');
+  return `<code class="inline-code">${text}</code>`;
+};
+
+marked.use({ renderer });
 
 // HTTP fallback function
 const sendMessageHttp = async (requestBody: any): Promise<ChatResponse> => {
@@ -49,30 +39,41 @@ const sendMessageHttp = async (requestBody: any): Promise<ChatResponse> => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-      credentials: 'include',
-      mode: 'cors',
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    console.log('Response status:', response.status);
     const data = await response.json();
-    console.log('Response data:', data);
     return data;
-  } catch (error: unknown) {
-    console.error('HTTP request failed:', error);
-    if (error instanceof Error) {
-      throw error;
-    } else if (typeof error === 'object' && error !== null) {
-      const errorObj = error as { status?: number; message?: string };
-      throw new Error(`Error code: ${errorObj.status || 'unknown'} - ${JSON.stringify(errorObj)}`);
-    } else {
-      throw new Error('An unknown error occurred');
-    }
+  } catch (error) {
+    console.error('Error sending message:', error);
+    throw error;
   }
 };
+
+// WebSocket handling code
+class WebSocketHandler {
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectAttempt = 0;
+  private options: {
+    onMessage: (data: string) => void;
+    onError: (message: string) => void;
+  };
+
+  constructor(options: { onMessage: (data: string) => void; onError: (message: string) => void }) {
+    this.options = options;
+  }
+
+  private connect() {
+    // WebSocket connection logic
+  }
+
+  private handleError(error: Event) {
+    console.error('WebSocket error:', error);
+    this.options.onError('Connection error');
+  }
+
+  private handleMessage(event: MessageEvent) {
+    this.options.onMessage(event.data);
+  }
+}
 
 const ConnectionStatus: React.FC<{ 
   wsConnected: boolean, 
@@ -374,6 +375,13 @@ export default function ChatApp() {
     }
   };
 
+  const renderMessage = (content: string) => {
+    console.log('Raw content:', JSON.stringify(content));
+    const html = marked(content);
+    console.log('Final HTML:', html);
+    return html;
+  };
+
   if (initError) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -409,26 +417,30 @@ export default function ChatApp() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[90%] w-full mx-auto lg:max-w-[1200px]">
         {messages.slice(-config.MESSAGE_HISTORY_LIMIT).map((message, index) => (
           <div
             key={index}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-3xl rounded-lg p-4 ${
+              className={`max-w-[85%] rounded-lg p-6 shadow-lg ${
                 message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white'
+                  ? 'bg-blue-600 text-white ml-auto'
+                  : 'bg-white text-gray-900 mr-auto'
               }`}
             >
               <div 
-                className="prose max-w-none" 
+                className={`prose max-w-none ${
+                  message.role === 'user' 
+                    ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
+                    : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900'
+                }`}
                 dangerouslySetInnerHTML={{ 
-                  __html: marked(message.content) 
+                  __html: renderMessage(message.content)
                 }} 
               />
-              <div className={`text-xs mt-2 ${
+              <div className={`text-xs mt-2 text-opacity-75 ${
                 message.role === 'user' ? 'text-gray-200' : 'text-gray-500'
               }`}>
                 {new Date(message.timestamp).toLocaleTimeString()}
@@ -438,7 +450,7 @@ export default function ChatApp() {
         ))}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white rounded-lg p-4">
+            <div className="bg-white rounded-lg p-4 shadow-sm">
               <Loader className="w-6 h-6 animate-spin" />
             </div>
           </div>
@@ -454,11 +466,11 @@ export default function ChatApp() {
           placeholder="Type your message... (Shift + Enter for new line)"
           disabled={isLoading}
         />
-        <div className="flex justify-end mt-2">
+        <div className="flex justify-end mt-4">
           <button
             onClick={sendMessage}
             disabled={isLoading || !input.trim()}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 
                      focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 
                      flex items-center gap-2"
           >

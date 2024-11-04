@@ -30,49 +30,36 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   }, [content]);
 
   // Configure marked
-  const renderer = {
-    code(code: string, language: string | undefined) {
-      if (!language) {
-        // Check for YAML-like content
-        const yamlIndicators = [': ', 'name:', 'template:', 'network:', 'roles:'];
-        if (yamlIndicators.some(indicator => code.includes(indicator))) {
-          language = 'yaml';
-        }
-      }
-      
-      const normalizedLang = (language || '').toLowerCase();
-      const validLanguage = Prism.languages[normalizedLang] ? normalizedLang : 'plaintext';
+  const renderer = new marked.Renderer();
 
-      try {
-        const highlighted = Prism.highlight(
-          code,
-          Prism.languages[validLanguage],
-          validLanguage
-        );
-
-        return `
-          <div class="code-block-wrapper relative rounded-lg my-3">
-            ${language ? 
-              `<div class="code-language absolute right-2 top-2 text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">
-                ${language}
-              </div>` 
-              : ''
-            }
-            <pre class="!bg-gray-900 !p-4 !m-0 overflow-x-auto"><code class="language-${validLanguage} !bg-transparent">${highlighted}</code></pre>
-          </div>
-        `;
-      } catch (error) {
-        console.warn(`Failed to highlight code block with language: ${language}`, error);
-        return `
-          <div class="code-block-wrapper relative rounded-lg my-3">
-            <pre class="!bg-gray-900 !p-4 !m-0 overflow-x-auto"><code class="!bg-transparent">${code}</code></pre>
-          </div>
-        `;
+  renderer.code = function(code: string, language: string | undefined) {
+    if (!language) {
+      const yamlIndicators = [': ', 'name:', 'template:', 'network:', 'roles:'];
+      if (yamlIndicators.some(indicator => code.includes(indicator))) {
+        language = 'yaml';
       }
-    },
-    codespan(text: string) {
-      return `<code class="inline-code">${text}</code>`;
     }
+    
+    const normalizedLang = (language || '').toLowerCase();
+    const validLanguage = Prism.languages[normalizedLang] ? normalizedLang : 'plaintext';
+    
+    try {
+      const highlighted = Prism.highlight(code, Prism.languages[validLanguage], validLanguage);
+      return `
+        <div class="code-block-wrapper relative rounded-lg my-3">
+          ${language ? `<div class="code-language absolute right-2 top-2 text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">${language}</div>` : ''}
+          <pre class="!bg-gray-900 !p-4 !m-0 overflow-x-auto"><code class="language-${validLanguage} !bg-transparent">${highlighted}</code></pre>
+        </div>
+      `;
+    } catch (error) {
+      return `<pre><code>${code}</code></pre>`;
+    }
+  };
+
+  renderer.codespan = function(text: string) {
+    // Remove only the outermost backticks if they exist
+    text = text.replace(/^`|`$/g, '');
+    return `<code class="inline-code">${text}</code>`;
   };
 
   marked.use({ renderer });
