@@ -40,11 +40,10 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
 
 # Initialize OpenAI client with configuration
-openai_settings = settings.openai_settings
 client = AzureOpenAI(
-    api_key=openai_settings.api_key,
-    api_version=openai_settings.api_version,
-    azure_endpoint=str(openai_settings.api_base)
+    api_key=settings.openai_api_key,
+    api_version=settings.openai_api_version,
+    azure_endpoint=str(settings.openai_api_base)
 )
 
 @app.get("/health")
@@ -82,7 +81,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 try:
                     response = client.chat.completions.create(
-                        model=openai_settings.deployment_name,
+                        model=settings.openai_deployment_name,
                         messages=messages,
                         max_tokens=chat_request.max_tokens,
                         temperature=chat_request.temperature,
@@ -119,7 +118,7 @@ async def chat(request: ChatRequest):
         ]
         
         completion_kwargs = {
-            "model": openai_settings.deployment_name,
+            "model": settings.openai_deployment_name,
             "messages": messages,
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
@@ -128,19 +127,18 @@ async def chat(request: ChatRequest):
         
         # Add vector search if enabled
         if settings.vector_search_enabled:
-            vector_search_settings = settings.vector_search_settings
             completion_kwargs["dataSources"] = [{
                 "type": "azure_search",
                 "parameters": {
-                    "endpoint": str(vector_search_settings.endpoint),
-                    "key": vector_search_settings.key,
-                    "indexName": vector_search_settings.index_name,
+                    "endpoint": str(settings.vector_search_endpoint),
+                    "key": settings.vector_search_key,
+                    "indexName": settings.vector_search_index,
                     "roleInformation": settings.system_prompt,
                     "filter": None,
-                    "semanticConfiguration": vector_search_settings.semantic_config,
-                    "queryType": vector_search_settings.query_type,
-                    "strictness": vector_search_settings.strictness,
-                    "topNDocuments": vector_search_settings.top_n_documents,
+                    "semanticConfiguration": settings.vector_search_semantic_config,
+                    "queryType": settings.vector_search_query_type,
+                    "strictness": settings.vector_search_strictness,
+                    "topNDocuments": settings.vector_search_top_n,
                     "inScope": True,
                 }
             }]

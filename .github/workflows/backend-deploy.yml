@@ -30,24 +30,27 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # New step: Check configuration before deployment
-    - name: Check configuration
+    # Add debug step before creating settings JSON
+    - name: Debug Settings
       run: |
         cd backend
-        # Create a temporary .env file for testing
-        echo "APP_NAME=${{ secrets.APP_NAME }}" >> .env
-        echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
-        echo "OPENAI_API_BASE=${{ secrets.OPENAI_API_BASE }}" >> .env
-        echo "OPENAI_API_VERSION=${{ secrets.OPENAI_API_VERSION }}" >> .env
-        echo "OPENAI_DEPLOYMENT_NAME=${{ secrets.OPENAI_DEPLOYMENT_NAME }}" >> .env
-        echo "VECTOR_SEARCH_ENABLED=${{ secrets.VECTOR_SEARCH_ENABLED }}" >> .env
-        echo "VECTOR_SEARCH_ENDPOINT=${{ secrets.VECTOR_SEARCH_ENDPOINT }}" >> .env
-        echo "VECTOR_SEARCH_KEY=${{ secrets.VECTOR_SEARCH_KEY }}" >> .env
-        echo "VECTOR_SEARCH_INDEX=${{ secrets.VECTOR_SEARCH_INDEX }}" >> .env
-        echo "CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}" >> .env
-        # Run the configuration check
-        python check_config.py
-        # Remove the temporary .env file
+        # Create temporary .env for debug
+        echo "APP_NAME=\"${{ secrets.APP_NAME }}\"" > .env
+        echo "OPENAI_API_KEY=\"${{ secrets.OPENAI_API_KEY }}\"" >> .env
+        echo "OPENAI_API_BASE=\"${{ secrets.OPENAI_API_BASE }}\"" >> .env
+        echo "OPENAI_API_VERSION=\"${{ secrets.OPENAI_API_VERSION }}\"" >> .env
+        echo "OPENAI_DEPLOYMENT_NAME=\"${{ secrets.OPENAI_DEPLOYMENT_NAME }}\"" >> .env
+        echo "VECTOR_SEARCH_ENABLED=\"${{ secrets.VECTOR_SEARCH_ENABLED }}\"" >> .env
+        echo "VECTOR_SEARCH_ENDPOINT=\"${{ secrets.VECTOR_SEARCH_ENDPOINT }}\"" >> .env
+        echo "VECTOR_SEARCH_KEY=\"${{ secrets.VECTOR_SEARCH_KEY }}\"" >> .env
+        echo "VECTOR_SEARCH_INDEX=\"${{ secrets.VECTOR_SEARCH_INDEX }}\"" >> .env
+        echo "CORS_ORIGINS=\"${{ secrets.CORS_ORIGINS }}\"" >> .env
+        echo "SYSTEM_PROMPT=\"${{ secrets.SYSTEM_PROMPT }}\"" >> .env
+        
+        echo "Running debug script..."
+        python debug_settings.py
+        
+        # Clean up temporary .env
         rm .env
 
     - name: Create settings JSON
@@ -92,9 +95,6 @@ jobs:
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
         package: backend
 
-    - name: Wait for deployment
-      run: sleep 30
-
     - name: Check application logs
       uses: Azure/cli@v1
       with:
@@ -107,8 +107,8 @@ jobs:
     - name: Verify health endpoint
       run: |
         echo "Checking health endpoint..."
-        for i in {1..5}; do
+        for i in {1..3}; do
           echo "Attempt $i..."
           curl -v https://${{ secrets.WEBAPP_NAME }}.azurewebsites.net/health || true
-          sleep 10
+          sleep 5
         done
