@@ -62,6 +62,18 @@ code:not([class*="language-"]) {
   line-height: 1.5;
 }
 
+/* User message inline code */
+.prose-invert code:not([class*="language-"]) {
+  color: white !important;
+  background-color: rgba(75, 85, 99, 0.8) !important;
+}
+
+/* Assistant message inline code */
+.prose code:not([class*="language-"]) {
+  color: #1a202c !important;
+  background-color: #e5e7eb !important;
+}
+
 /* Improved scrollbars for code blocks */
 .code-block-wrapper pre::-webkit-scrollbar {
   height: 8px;

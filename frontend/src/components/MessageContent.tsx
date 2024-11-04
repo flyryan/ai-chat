@@ -62,13 +62,9 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }
   };
 
-  // Improved inline code rendering
+  // Simplified inline code rendering - remove inline styles
   renderer.codespan = (code) => {
-    return `<code class="font-mono text-sm px-1.5 py-0.5 rounded bg-opacity-20 border border-opacity-20 ${
-      role === 'user' 
-        ? 'bg-gray-700 text-gray-100 border-gray-400' 
-        : 'bg-gray-200 text-gray-900 border-gray-300'
-    }">${code}</code>`;
+    return `<code>${code}</code>`;
   };
 
   marked.setOptions({

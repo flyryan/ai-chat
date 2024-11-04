@@ -377,10 +377,10 @@ export default function ChatApp() {
             }`}
           >
             <div
-              className={`w-full rounded-lg p-6 shadow-lg ${
+              className={`max-w-[85%] rounded-lg p-6 shadow-lg ${
                 message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-900'
+                  ? 'bg-blue-600 text-white ml-auto'
+                  : 'bg-white text-gray-900 mr-auto'
               }`}
             >
               <MessageContent content={message.content} role={message.role} />
