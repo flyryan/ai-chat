@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import json
 import re
@@ -99,6 +99,60 @@ client = AzureOpenAI(
     azure_endpoint=str(settings.openai_api_base)
 )
 
+def prepare_vector_search_config() -> Optional[Dict[str, Any]]:
+    """Prepare vector search configuration if enabled"""
+    if not settings.vector_search_enabled:
+        return None
+        
+    return {
+        "type": "azure_cognitive_search",
+        "parameters": {
+            "endpoint": str(settings.vector_search_endpoint),
+            "key": settings.vector_search_key,
+            "indexName": settings.vector_search_index,
+            "fieldsMapping": {
+                "contentFields": ["content"],
+                "titleField": "title",
+                "urlField": "url",
+                "filepathField": "filepath"
+            },
+            "inScope": True,
+            "roleInformation": settings.system_prompt,
+            "strictness": 3,
+            "topNDocuments": 5
+        }
+    }
+
+async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: int, temperature: float, stream: bool = False):
+    """Generate chat completion with proper error handling"""
+    try:
+        completion_kwargs = {
+            "model": settings.openai_deployment_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": stream,
+        }
+        
+        # Add data sources if vector search is enabled
+        vector_search_config = prepare_vector_search_config()
+        if vector_search_config:
+            completion_kwargs["extra_body"] = {
+                "dataSources": [vector_search_config]
+            }
+            logger.info("Vector search enabled for completion")
+        
+        logger.debug(f"Calling OpenAI with parameters: {completion_kwargs}")
+        return await client.chat.completions.create(**completion_kwargs)
+        
+    except Exception as e:
+        logger.error(f"Error in chat completion: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OpenAI API error: {str(e)}"
+        )
+
 @app.get("/")
 async def root():
     """Root endpoint for debugging"""
@@ -137,34 +191,12 @@ async def chat(request: ChatRequest):
             for m in request.messages
         ]
         
-        logger.debug(f"Processed messages: {messages}")
-        
-        completion_kwargs = {
-            "model": settings.openai_deployment_name,
-            "messages": messages,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-            "stream": False,
-        }
-        
-        # Add vector search if enabled
-        if settings.vector_search_enabled:
-            logger.info("Vector search enabled, adding data sources")
-            completion_kwargs["dataSources"] = [{
-                "type": "azure_search",
-                "parameters": {
-                    "endpoint": str(settings.vector_search_endpoint),
-                    "key": settings.vector_search_key,
-                    "indexName": settings.vector_search_index,
-                    "roleInformation": settings.system_prompt,
-                    "filter": None,
-                    "inScope": True
-                }
-            }]
-
-        logger.debug(f"Calling OpenAI with model: {settings.openai_deployment_name}")
-        completion = client.chat.completions.create(**completion_kwargs)
-        logger.debug(f"Received completion: {completion}")
+        completion = await generate_chat_completion(
+            messages=messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            stream=False
+        )
 
         response_data = {
             "response": completion.choices[0].message.content,
@@ -175,7 +207,7 @@ async def chat(request: ChatRequest):
         
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
-        logger.exception(e)  # Log full stack trace
+        logger.exception(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
@@ -197,12 +229,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 request_data = json.loads(data)
                 chat_request = ChatRequest(**request_data)
                 
-                logger.info("Current configuration:")
-                logger.info(f"OpenAI Model: {settings.openai_deployment_name}")
-                logger.info(f"Vector Search Enabled: {settings.vector_search_enabled}")
-                if settings.vector_search_enabled:
-                    logger.info(f"Vector Search Index: {settings.vector_search_index}")
-                
                 messages = [
                     {"role": "system", "content": settings.system_prompt}
                 ] + [
@@ -212,38 +238,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 try:
                     logger.info("Calling OpenAI API")
-                    completion_kwargs = {
-                        "model": settings.openai_deployment_name,
-                        "messages": messages,
-                        "max_tokens": chat_request.max_tokens,
-                        "temperature": chat_request.temperature,
-                        "stream": True
-                    }
-
-                    # Add vector search if enabled
-                    if settings.vector_search_enabled:
-                        logger.info("Vector search enabled, adding data sources")
-                        completion_kwargs["dataSources"] = [{
-                            "type": "azure_search",
-                            "parameters": {
-                                "endpoint": str(settings.vector_search_endpoint),
-                                "key": settings.vector_search_key,
-                                "indexName": settings.vector_search_index,
-                                "roleInformation": settings.system_prompt,
-                                "filter": None,
-                                "inScope": True
-                            }
-                        }]
-
-                    completion = client.chat.completions.create(**completion_kwargs)
+                    completion = await generate_chat_completion(
+                        messages=messages,
+                        max_tokens=chat_request.max_tokens,
+                        temperature=chat_request.temperature,
+                        stream=True
+                    )
                     
-                    for chunk in completion:
+                    async for chunk in completion:
                         if chunk.choices[0].delta.content:
                             await websocket.send_text(chunk.choices[0].delta.content)
                             
                 except Exception as e:
                     logger.error(f"Error in OpenAI API call: {str(e)}")
-                    logger.exception(e)  # Log full stack trace
+                    logger.exception(e)
                     await websocket.send_text(f"Error: {str(e)}")
                     
             except json.JSONDecodeError as e:
@@ -251,12 +259,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text("Invalid JSON format")
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
-                logger.exception(e)  # Log full stack trace
+                logger.exception(e)
                 await websocket.send_text(f"Error: {str(e)}")
                 
     except Exception as e:
         logger.error(f"WebSocket connection error: {str(e)}")
-        logger.exception(e)  # Log full stack trace
+        logger.exception(e)
 
 if __name__ == "__main__":
     import uvicorn
