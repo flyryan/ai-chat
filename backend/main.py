@@ -11,19 +11,19 @@ from config import settings
 
 # Configure logging at the very start
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.DEBUG if settings.debug else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 logger.info("Starting application...")
 
-app = FastAPI(title=settings.APP_NAME)
+app = FastAPI(title=settings.app_name)
 
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,14 +36,14 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    max_tokens: Optional[int] = settings.OPENAI_MAX_TOKENS
-    temperature: Optional[float] = settings.OPENAI_TEMPERATURE
+    max_tokens: Optional[int] = 4000
+    temperature: Optional[float] = 0.7
 
 # Initialize OpenAI client with configuration
 client = AzureOpenAI(
-    api_key=settings.OPENAI_API_KEY,
-    api_version=settings.OPENAI_API_VERSION,
-    azure_endpoint=settings.OPENAI_API_BASE
+    api_key=settings.openai_api_key,
+    api_version=settings.openai_api_version,
+    azure_endpoint=str(settings.openai_api_base)
 )
 
 @app.get("/health")
@@ -51,9 +51,9 @@ async def health():
     """Health check endpoint that returns configuration status"""
     return {
         "status": "healthy",
-        "app_name": settings.APP_NAME,
-        "environment": settings.ENVIRONMENT,
-        "vector_search_enabled": settings.VECTOR_SEARCH_ENABLED,
+        "app_name": settings.app_name,
+        "environment": settings.environment,
+        "vector_search_enabled": settings.vector_search_enabled,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -73,7 +73,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 chat_request = ChatRequest(**request_data)
                 
                 messages = [
-                    {"role": "system", "content": settings.SYSTEM_PROMPT}
+                    {"role": "system", "content": settings.system_prompt}
                 ] + [
                     {"role": m.role, "content": m.content} 
                     for m in chat_request.messages
@@ -81,7 +81,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 try:
                     response = client.chat.completions.create(
-                        model=settings.OPENAI_DEPLOYMENT_NAME,
+                        model=settings.openai_deployment_name,
                         messages=messages,
                         max_tokens=chat_request.max_tokens,
                         temperature=chat_request.temperature,
@@ -111,14 +111,14 @@ async def chat(request: ChatRequest):
     """HTTP endpoint for chat functionality"""
     try:
         messages = [
-            {"role": "system", "content": settings.SYSTEM_PROMPT}
+            {"role": "system", "content": settings.system_prompt}
         ] + [
             {"role": m.role, "content": m.content} 
             for m in request.messages
         ]
         
         completion_kwargs = {
-            "model": settings.OPENAI_DEPLOYMENT_NAME,
+            "model": settings.openai_deployment_name,
             "messages": messages,
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
@@ -126,23 +126,13 @@ async def chat(request: ChatRequest):
         }
         
         # Add vector search if enabled
-        if settings.VECTOR_SEARCH_ENABLED:
-            completion_kwargs["dataSources"] = [{
-                "type": "azure_search",
-                "parameters": {
-                    "endpoint": settings.VECTOR_SEARCH_ENDPOINT,
-                    "key": settings.VECTOR_SEARCH_KEY,
-                    "indexName": settings.VECTOR_SEARCH_INDEX,
-                    "roleInformation": settings.SYSTEM_PROMPT,
-                    "filter": None,
-                    "semanticConfiguration": "default",
-                    "queryType": "vector_simple_hybrid",
-                    "strictness": 3,
-                    "topNDocuments": 5,
-                    "inScope": True,
-                    "embeddingDeploymentName": "text-embedding-ada-002"
-                }
-            }]
+        if settings.vector_search_enabled:
+            vector_search_params = settings.get_vector_search_params()
+            if vector_search_params:
+                completion_kwargs["dataSources"] = [{
+                    "type": "azure_search",
+                    "parameters": vector_search_params
+                }]
 
         completion = client.chat.completions.create(**completion_kwargs)
 
@@ -162,7 +152,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.ENVIRONMENT == "development"
+        host=settings.server_settings.host,
+        port=settings.server_settings.port,
+        reload=settings.is_development
     )
