@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader } from 'lucide-react';
+import { Send, Loader, AlertTriangle } from 'lucide-react';
 import { marked } from 'marked';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
@@ -12,10 +12,28 @@ import MarkdownEditor from './components/MarkdownEditor';
 import { config } from './config';
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
 }
+
+const ConnectionStatus: React.FC<{ wsConnected: boolean, useHttpFallback: boolean, reconnectAttempt: number }> = ({ 
+  wsConnected, 
+  useHttpFallback, 
+  reconnectAttempt 
+}) => (
+  <div className="flex items-center gap-2 text-sm">
+    <span 
+      className={`w-2 h-2 rounded-full ${
+        wsConnected ? 'bg-green-500' : 'bg-red-500'
+      }`} 
+    />
+    {useHttpFallback ? 'Using HTTP Mode' : 
+     wsConnected ? 'Connected' : 
+     reconnectAttempt > 0 ? `Reconnecting... ${reconnectAttempt}/${config.MAX_RECONNECT_ATTEMPTS}` :
+     'Disconnected'}
+  </div>
+);
 
 export default function ChatApp() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,6 +43,7 @@ export default function ChatApp() {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [useHttpFallback, setUseHttpFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
@@ -41,15 +60,19 @@ export default function ChatApp() {
     }
 
     try {
+      console.log('Connecting to WebSocket:', config.WS_URL);
       const wsInstance = new WebSocket(config.WS_URL);
       
       wsInstance.onopen = () => {
+        console.log('WebSocket connected');
         setWsConnected(true);
         setUseHttpFallback(false);
         setReconnectAttempt(0);
+        setError(null);
       };
 
       wsInstance.onclose = () => {
+        console.log('WebSocket closed');
         setWsConnected(false);
         ws.current = null;
     
@@ -60,6 +83,11 @@ export default function ChatApp() {
         } else {
           setUseHttpFallback(true);
         }
+      };
+
+      wsInstance.onerror = (event) => {
+        console.error('WebSocket error:', event);
+        setError('WebSocket connection error');
       };
 
       wsInstance.onmessage = (event) => {
@@ -80,12 +108,14 @@ export default function ChatApp() {
             return newMessages;
           });
         } catch (error) {
+          console.error('Error processing message:', error);
           setError('Error processing message');
         }
       };
 
       ws.current = wsInstance;
     } catch (error) {
+      console.error('Error creating WebSocket:', error);
       setWsConnected(false);
       setUseHttpFallback(true);
     }
@@ -97,7 +127,6 @@ export default function ChatApp() {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify(requestBody),
     });
 
@@ -144,6 +173,7 @@ export default function ChatApp() {
         }]);
       }
     } catch (error) {
+      console.error('Failed to send message:', error);
       setError('Failed to send message. Please try again.');
       setMessages(prev => prev.slice(0, -1));
     } finally {
@@ -168,17 +198,55 @@ export default function ChatApp() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Initial health check
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${config.API_URL}/health`);
+        if (!response.ok) {
+          throw new Error(`Health check failed: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Health check response:', data);
+        setInitError(null);
+      } catch (error) {
+        console.error('Health check error:', error);
+        setInitError('Could not connect to chat service. Please try again later.');
+      }
+    };
+
+    checkHealth();
+  }, []);
+
+  if (initError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
+          <div className="flex items-center gap-2 text-red-600 mb-4">
+            <AlertTriangle className="w-6 h-6" />
+            <h2 className="text-xl font-semibold">Connection Error</h2>
+          </div>
+          <p className="text-gray-600 mb-4">{initError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <div className="p-4 bg-white shadow-sm">
         <h1 className="text-2xl font-bold text-gray-800">{config.APP_NAME}</h1>
-        <div className="text-sm text-gray-500 flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          {useHttpFallback ? 'Using HTTP Mode' : 
-           wsConnected ? 'Connected' : 
-           reconnectAttempt > 0 ? `Reconnecting... ${reconnectAttempt}/${config.MAX_RECONNECT_ATTEMPTS}` :
-           'Disconnected'}
-        </div>
+        <ConnectionStatus 
+          wsConnected={wsConnected}
+          useHttpFallback={useHttpFallback}
+          reconnectAttempt={reconnectAttempt}
+        />
         {error && (
           <div className="mt-2 text-sm text-red-600">
             {error}
@@ -199,9 +267,12 @@ export default function ChatApp() {
                   : 'bg-white'
               }`}
             >
-              <div className="prose max-w-none" dangerouslySetInnerHTML={{ 
-                __html: marked(message.content) 
-              }} />
+              <div 
+                className="prose max-w-none" 
+                dangerouslySetInnerHTML={{ 
+                  __html: marked(message.content) 
+                }} 
+              />
               <div className={`text-xs mt-2 ${
                 message.role === 'user' ? 'text-gray-200' : 'text-gray-500'
               }`}>
