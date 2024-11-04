@@ -1,4 +1,21 @@
-import os
+import logging
+
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+logger.info("Starting application initialization...")
+
+try:
+    from config import settings
+    logger.info("Successfully imported settings")
+except Exception as e:
+    logger.error(f"Failed to import settings: {str(e)}")
+    raise
+
 from fastapi import FastAPI, HTTPException, WebSocket, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -6,17 +23,6 @@ from typing import List, Optional
 import json
 from openai import AzureOpenAI
 from datetime import datetime
-import logging
-from config import settings
-
-# Configure logging at the very start
-logging.basicConfig(
-    level=logging.DEBUG if settings.debug else logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-logger.info("Starting application...")
 
 app = FastAPI(title=settings.app_name)
 
