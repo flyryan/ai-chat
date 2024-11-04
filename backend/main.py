@@ -222,12 +222,28 @@ async def websocket_endpoint(websocket: WebSocket):
         
         while True:
             try:
+                # Log the start of message processing
                 data = await websocket.receive_text()
                 logger.info("Received WebSocket message")
-                logger.debug(f"Message content: {data[:100]}...")
+                logger.debug(f"Raw message content: {data}")
                 
-                request_data = json.loads(data)
-                chat_request = ChatRequest(**request_data)
+                try:
+                    request_data = json.loads(data)
+                    logger.debug(f"Parsed request data: {request_data}")
+                except json.JSONDecodeError as e:
+                    error_msg = f"Invalid JSON format: {str(e)}"
+                    logger.error(error_msg)
+                    await websocket.send_text(error_msg)
+                    continue
+
+                try:
+                    chat_request = ChatRequest(**request_data)
+                    logger.debug(f"Validated chat request: {chat_request}")
+                except Exception as e:
+                    error_msg = f"Invalid request format: {str(e)}"
+                    logger.error(error_msg)
+                    await websocket.send_text(error_msg)
+                    continue
                 
                 messages = [
                     {"role": "system", "content": settings.system_prompt}
@@ -236,29 +252,57 @@ async def websocket_endpoint(websocket: WebSocket):
                     for m in chat_request.messages
                 ]
                 
+                logger.debug(f"Prepared messages: {messages}")
+                logger.info("Preparing OpenAI API call")
+                
                 try:
-                    logger.info("Calling OpenAI API")
-                    completion = await generate_chat_completion(
-                        messages=messages,
-                        max_tokens=chat_request.max_tokens,
-                        temperature=chat_request.temperature,
-                        stream=True
-                    )
+                    completion_kwargs = {
+                        "model": settings.openai_deployment_name,
+                        "messages": messages,
+                        "max_tokens": chat_request.max_tokens,
+                        "temperature": chat_request.temperature,
+                        "stream": True
+                    }
                     
+                    # Add vector search if enabled
+                    if settings.vector_search_enabled:
+                        logger.info("Vector search is enabled, adding configuration")
+                        vector_search_config = {
+                            "type": "azure_cognitive_search",
+                            "parameters": {
+                                "endpoint": str(settings.vector_search_endpoint),
+                                "key": settings.vector_search_key,
+                                "indexName": settings.vector_search_index,
+                                "roleInformation": settings.system_prompt,
+                                "strictness": 3,
+                                "topNDocuments": 5
+                            }
+                        }
+                        completion_kwargs["extra_body"] = {
+                            "dataSources": [vector_search_config]
+                        }
+                        logger.debug("Added vector search configuration")
+                    
+                    logger.debug(f"Final completion kwargs: {completion_kwargs}")
+                    completion = await client.chat.completions.create(**completion_kwargs)
+                    
+                    # Process streaming response
                     async for chunk in completion:
                         if chunk.choices[0].delta.content:
                             await websocket.send_text(chunk.choices[0].delta.content)
-                            
+                    
                 except Exception as e:
-                    logger.error(f"Error in OpenAI API call: {str(e)}")
+                    error_msg = f"OpenAI API error: {str(e)}"
+                    logger.error(error_msg)
                     logger.exception(e)
                     await websocket.send_text(f"Error: {str(e)}")
                     
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON decode error: {str(e)}")
-                await websocket.send_text("Invalid JSON format")
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected")
+                break
             except Exception as e:
-                logger.error(f"Error processing message: {str(e)}")
+                error_msg = f"Unexpected error: {str(e)}"
+                logger.error(error_msg)
                 logger.exception(e)
                 await websocket.send_text(f"Error: {str(e)}")
                 
