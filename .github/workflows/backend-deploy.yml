@@ -51,6 +51,12 @@ jobs:
             "SYSTEM_PROMPT": "${{ secrets.SYSTEM_PROMPT }}"
           }' > appsettings.json
 
+          # Add CORS configuration to web app
+          az webapp cors add \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --allowed-origins "https://*.azurestaticapps.net" "https://salmon-grass-06d76a510.5.azurestaticapps.net"
+
           # Update app settings
           az webapp config appsettings set \
             --name ${{ secrets.WEBAPP_NAME }} \
@@ -87,4 +93,3 @@ jobs:
           echo "Attempt $i..."
           curl -v https://${{ secrets.WEBAPP_NAME }}.azurewebsites.net/health || true
           sleep 5
-        done

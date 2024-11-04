@@ -1,4 +1,9 @@
 import logging
+import re
+from fastapi import FastAPI, HTTPException, WebSocket, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from config import settings
 
 # Configure logging first
 logging.basicConfig(
@@ -9,35 +14,71 @@ logger = logging.getLogger(__name__)
 
 logger.info("Starting application initialization...")
 
-try:
-    from config import settings
-    logger.info("Successfully imported settings")
-except Exception as e:
-    logger.error(f"Failed to import settings: {str(e)}")
-    raise
-
-from fastapi import FastAPI, HTTPException, WebSocket, status
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import json
-from openai import AzureOpenAI
-from datetime import datetime
-
 app = FastAPI(title=settings.app_name)
 
-# Log CORS settings
-logger.info(f"Configuring CORS with origins: {settings.cors_origins}")
+def get_allowed_origins():
+    """Get allowed origins with proper handling of wildcard domains"""
+    origins = []
+    for origin in settings.cors_origins:
+        if '*' in origin:
+            # Convert wildcard pattern to regex pattern
+            pattern = re.escape(origin).replace('\\*', '.*')
+            origins.append(re.compile(pattern))
+        else:
+            origins.append(origin)
+    return origins
 
-# CORS middleware configuration
+def is_origin_allowed(origin: str, allowed_origins) -> bool:
+    """Check if origin is allowed, handling both exact matches and patterns"""
+    if not origin:
+        return False
+    
+    for allowed_origin in allowed_origins:
+        if isinstance(allowed_origin, re.Pattern):
+            if allowed_origin.match(origin):
+                return True
+        elif origin == allowed_origin:
+            return True
+    return False
+
+allowed_origins = get_allowed_origins()
+logger.info(f"Configured CORS origins: {settings.cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],  # We'll handle validation ourselves
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+@app.middleware("http")
+async def cors_middleware(request, call_next):
+    """Custom CORS middleware to handle wildcard subdomains"""
+    origin = request.headers.get("origin")
+    logger.debug(f"Received request from origin: {origin}")
+
+    response = await call_next(request)
+    
+    if origin:
+        if is_origin_allowed(origin, allowed_origins):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Expose-Headers"] = "*"
+            logger.debug(f"CORS headers set for origin: {origin}")
+        else:
+            logger.warning(f"Origin not allowed: {origin}")
+    
+    return response
+
+from pydantic import BaseModel
+from typing import List, Optional
+import json
+from openai import AzureOpenAI
+from datetime import datetime
 
 class ChatMessage(BaseModel):
     role: str
