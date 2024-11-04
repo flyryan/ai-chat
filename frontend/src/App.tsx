@@ -412,7 +412,7 @@ export default function ChatApp() {
                     ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
                     : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-gray-900'
                 }`}
-                dangerouslySetInnerHTML={{ __html: marked(content) }}
+                dangerouslySetInnerHTML={{ __html: marked(message.content) }}
               />
               <div className={`text-xs mt-2 text-opacity-75 ${
                 message.role === 'user' ? 'text-gray-200' : 'text-gray-500'
