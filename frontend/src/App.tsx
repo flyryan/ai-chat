@@ -1,11 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Loader, AlertTriangle } from 'lucide-react';
-
-// Import Prism core and themes first
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
-
-// Then import languages
 import 'prismjs/components/prism-markup';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-javascript';
@@ -15,10 +11,7 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-markdown';
-
-// Then import marked
 import { marked } from 'marked';
-
 import MarkdownEditor from './components/MarkdownEditor';
 import { config } from './config';
 
@@ -37,6 +30,32 @@ interface Message {
   content: string;
   timestamp: string;
 }
+
+const fetchWithCreds = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const defaultOptions: RequestInit = {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    mode: 'cors',
+  };
+
+  const response = await fetch(url, {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...defaultOptions.headers,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response;
+};
 
 const ConnectionStatus: React.FC<{ wsConnected: boolean, useHttpFallback: boolean, reconnectAttempt: number }> = ({ 
   wsConnected, 
@@ -143,17 +162,10 @@ export default function ChatApp() {
   }, [reconnectAttempt]);
 
   const sendMessageHttp = async (requestBody: any) => {
-    const response = await fetch(`${config.API_URL}/chat`, {
+    const response = await fetchWithCreds(`${config.API_URL}/chat`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(requestBody),
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
 
     return response.json();
   };
@@ -223,7 +235,7 @@ export default function ChatApp() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await fetchWithConfig(`${config.API_URL}/health`);
+        const response = await fetchWithCreds(`${config.API_URL}/health`);
         const data = await response.json();
         console.log('Health check response:', data);
         setInitError(null);
