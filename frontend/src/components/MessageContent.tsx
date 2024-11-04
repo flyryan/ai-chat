@@ -21,9 +21,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
 
   const renderer = new marked.Renderer();
   
-  // Enhanced code block rendering with YAML detection
   renderer.code = (code, language) => {
-    // Special handling for YAML-like content if no language is specified
     if (!language && code.includes(':')) {
       const yamlIndicators = [': ', 'name:', 'template:', 'network:', 'roles:'];
       if (yamlIndicators.some(indicator => code.includes(indicator))) {
@@ -62,35 +60,22 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }
   };
 
-  // Modified inline code rendering with proper backtick handling
-  renderer.codespan = (code) => {
-    // Strip any remaining backticks from the content
-    const cleanCode = code.replace(/`/g, '');
-    return `<code class="bg-opacity-20 rounded px-1.5 py-0.5 font-mono text-sm ${
-      role === 'user' 
-        ? 'bg-gray-700 text-white' 
-        : 'bg-gray-200 text-white'
-    }">${cleanCode}</code>`;
+  renderer.codespan = (text) => {
+    // Use the raw text without any backticks
+    const cleanText = text.replace(/^`|`$/g, '').replace(/\\`/g, '');
+    return `<code>${cleanText}</code>`;
   };
 
-  // Pre-process the content to handle inline code properly
-  const processContent = (rawContent: string) => {
-    // Handle inline code with single backticks
-    return rawContent.replace(/`([^`]+)`/g, (_, code) => `\`${code.trim()}\``);
-  };
+  // Override the lexer's rules for inline code
+  const originalInlineCodeRule = marked.Lexer.rules.inline.code;
+  marked.Lexer.rules.inline.code = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/;
 
   marked.setOptions({
     renderer,
     gfm: true,
     breaks: true,
     headerIds: false,
-    langPrefix: 'language-',
-    // Add custom processing for inline code
-    walkTokens: (token: any) => {
-      if (token.type === 'codespan') {
-        token.text = token.text.replace(/`/g, '');
-      }
-    }
+    langPrefix: 'language-'
   });
 
   const messageClasses = `prose max-w-none ${
@@ -99,10 +84,18 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-white'
   }`;
 
+  // Clean up after we're done to not affect other instances
+  const cleanup = () => {
+    marked.Lexer.rules.inline.code = originalInlineCodeRule;
+  };
+
+  const html = marked(content);
+  cleanup();
+
   return (
     <div 
       className={messageClasses}
-      dangerouslySetInnerHTML={{ __html: marked(processContent(content)) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 };
