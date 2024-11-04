@@ -29,6 +29,8 @@ jobs:
       run: |
         cd frontend
         npm install
+        npm install marked prismjs @types/marked @types/prismjs
+        npm install -D @tailwindcss/typography
         
     - name: Build
       run: |

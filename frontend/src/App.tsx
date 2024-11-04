@@ -2,6 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Send, Loader, Bold, Italic, Code
 } from 'lucide-react';
+import { marked } from 'marked';
+import Prism from 'prismjs';
+import 'prismjs/themes/prism-tomorrow.css';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-json';
 
 const BACKEND_URL = process.env.REACT_APP_API_URL || 'https://ludus-chat-backend.azurewebsites.net';
 const WS_URL = process.env.REACT_APP_WS_URL || 'wss://ludus-chat-backend.azurewebsites.net/ws';
@@ -14,31 +22,33 @@ interface Message {
 }
 
 const MessageContent: React.FC<{ content: string }> = ({ content }) => {
-  const formatText = (text: string): string => {
-    // Handle multiline code blocks with triple backticks
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, 
-      '<pre class="bg-gray-800 text-gray-200 p-4 rounded-lg my-2 overflow-x-auto"><code>$2</code></pre>'
+  useEffect(() => {
+    Prism.highlightAll();
+  }, [content]);
+
+  const renderer = new marked.Renderer();
+  // Customize code blocks to use Prism
+  renderer.code = (code, language) => {
+    const validLanguage = Prism.languages[language || 'text'] ? language : 'text';
+    const highlighted = Prism.highlight(
+      code,
+      Prism.languages[validLanguage],
+      validLanguage
     );
-    
-    // Handle inline code with single backticks
-    text = text.replace(/`([^`]+)`/g, 
-      '<code class="bg-gray-800 text-gray-200 px-2 py-1 rounded">$1</code>'
-    );
-    
-    // Handle bold and italic
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
-    // Convert newlines to <br> tags
-    text = text.replace(/\n/g, '<br>');
-    
-    return text;
+    return `<pre class="bg-gray-800 rounded-lg my-2"><code class="language-${validLanguage}">${highlighted}</code></pre>`;
   };
 
+  marked.setOptions({
+    renderer,
+    gfm: true,
+    breaks: true,
+    headerIds: true
+  });
+
   return (
-    <div 
-      className="prose prose-invert max-w-none whitespace-pre-wrap"
-      dangerouslySetInnerHTML={{ __html: formatText(content) }}
+    <div
+      className="prose prose-invert max-w-none"
+      dangerouslySetInnerHTML={{ __html: marked(content) }}
     />
   );
 };
