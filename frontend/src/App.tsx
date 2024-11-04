@@ -223,10 +223,7 @@ export default function ChatApp() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await fetch(`${config.API_URL}/health`);
-        if (!response.ok) {
-          throw new Error(`Health check failed: ${response.status}`);
-        }
+        const response = await fetchWithConfig(`${config.API_URL}/health`);
         const data = await response.json();
         console.log('Health check response:', data);
         setInitError(null);

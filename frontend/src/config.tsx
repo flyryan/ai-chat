@@ -51,6 +51,33 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout 
   }
 };
 
+// Add fetchWithConfig function
+export const fetchWithConfig = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const defaultOptions: RequestInit = {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    mode: 'cors',
+  };
+
+  const response = await fetch(url, {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...defaultOptions.headers,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response;
+};
+
 // Create the configuration object
 export const config: Config = {
   // Basic configuration
