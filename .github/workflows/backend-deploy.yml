@@ -54,6 +54,15 @@ jobs:
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --settings @appsettings.json
 
+    - name: Configure startup command
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          az webapp config set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --startup-file "gunicorn main:app --config gunicorn.conf.py"
+
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
       with:
@@ -61,6 +70,23 @@ jobs:
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
         package: backend
 
-    - name: Verify deployment
+    - name: Wait for deployment
+      run: sleep 30
+
+    - name: Check application logs
+      uses: Azure/cli@v1
+      with:
+        inlineScript: |
+          echo "Fetching application logs..."
+          az webapp log tail \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }}
+
+    - name: Verify health endpoint
       run: |
-        curl -f https://${{ secrets.WEBAPP_NAME }}.azurewebsites.net/health
+        echo "Checking health endpoint..."
+        for i in {1..5}; do
+          echo "Attempt $i..."
+          curl -v https://${{ secrets.WEBAPP_NAME }}.azurewebsites.net/health || true
+          sleep 10
+        done

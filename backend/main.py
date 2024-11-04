@@ -9,9 +9,14 @@ from datetime import datetime
 import logging
 from config import settings
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging at the very start
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+logger.info("Starting application...")
 
 app = FastAPI(title=settings.APP_NAME)
 
