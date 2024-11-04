@@ -2,23 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-.inline-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.875em;
-  background-color: rgb(45, 45, 45);
-  border-radius: 0.25rem;
+/* YAML-specific syntax highlighting */
+.language-yaml .token.key {
+  color: #569cd6;
 }
 
+.language-yaml .token.string {
+  color: #ce9178;
+}
+
+.language-yaml .token.number {
+  color: #b5cea8;
+}
+
+.language-yaml .token.punctuation {
+  color: #808080;
+}
+
+.language-yaml .token.boolean {
+  color: #4ec9b0;
+}
+
+/* General code block styling */
 .code-block-wrapper {
   position: relative;
   margin: 1rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
 .code-block-wrapper pre {
   margin: 0 !important;
   padding: 1rem !important;
-  background-color: transparent !important;
+  background-color: #1e1e1e !important;
   overflow-x: auto;
+  max-height: 600px;
 }
 
 .code-block-wrapper code {
@@ -26,58 +44,39 @@
   padding: 0 !important;
   font-size: 0.875em !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  white-space: pre;
+  word-spacing: normal;
+  word-break: normal;
+  line-height: 1.5;
 }
 
-/* Prism.js theme overrides */
-.token.comment,
-.token.prolog,
-.token.doctype,
-.token.cdata {
-  color: #8292a2;
+/* Inline code improvements */
+code:not([class*="language-"]) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875em;
+  border-radius: 0.25rem;
+  padding: 0.2em 0.4em;
+  margin: 0 0.2em;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.5;
 }
 
-.token.punctuation {
-  color: #f8f8f2;
+/* Improved scrollbars for code blocks */
+.code-block-wrapper pre::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
 }
 
-.token.property,
-.token.tag,
-.token.constant,
-.token.symbol,
-.token.deleted {
-  color: #f92672;
+.code-block-wrapper pre::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
 }
 
-.token.boolean,
-.token.number {
-  color: #ae81ff;
+.code-block-wrapper pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
-.token.selector,
-.token.attr-name,
-.token.string,
-.token.char,
-.token.builtin,
-.token.inserted {
-  color: #a6e22e;
-}
-
-.token.operator,
-.token.entity,
-.token.url,
-.language-css .token.string,
-.style .token.string,
-.token.variable {
-  color: #f8f8f2;
-}
-
-.token.atrule,
-.token.attr-value,
-.token.function,
-.token.class-name {
-  color: #e6db74;
-}
-
-.token.keyword {
-  color: #66d9ef;
+.code-block-wrapper pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }

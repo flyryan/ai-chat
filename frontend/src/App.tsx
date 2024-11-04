@@ -368,7 +368,7 @@ export default function ChatApp() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[90%] w-full mx-auto lg:max-w-[1200px]">
         {messages.map((message, index) => (
           <div
             key={index}
@@ -377,7 +377,7 @@ export default function ChatApp() {
             }`}
           >
             <div
-              className={`max-w-3xl rounded-lg p-6 shadow-lg ${
+              className={`w-full rounded-lg p-6 shadow-lg ${
                 message.role === 'user'
                   ? 'bg-blue-600 text-white'
                   : 'bg-white text-gray-900'
