@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { marked } from 'marked';
 import Prism from 'prismjs';
 import 'prismjs/themes/prism-tomorrow.css';
-import 'prismjs/components/prism-yaml';  // Explicitly import YAML support
+import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-python';
 import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-javascript';
@@ -62,9 +62,15 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }
   };
 
-  // Simplified inline code rendering - remove inline styles
+  // Modified inline code rendering to handle backticks and ensure consistent styling
   renderer.codespan = (code) => {
-    return `<code>${code}</code>`;
+    // Remove backticks if they're at the start and end of the code
+    const cleanCode = code.replace(/^`|`$/g, '');
+    return `<code class="bg-opacity-20 rounded px-1.5 py-0.5 font-mono text-sm ${
+      role === 'user' 
+        ? 'bg-gray-700 text-white' 
+        : 'bg-gray-200 text-white'
+    }">${cleanCode}</code>`;
   };
 
   marked.setOptions({
@@ -78,7 +84,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   const messageClasses = `prose max-w-none ${
     role === 'user' 
       ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
-      : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900'
+      : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-white'
   }`;
 
   return (

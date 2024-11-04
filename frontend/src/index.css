@@ -50,28 +50,27 @@
   line-height: 1.5;
 }
 
-/* Inline code improvements */
-code:not([class*="language-"]) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.875em;
-  border-radius: 0.25rem;
-  padding: 0.2em 0.4em;
-  margin: 0 0.2em;
-  white-space: nowrap;
-  vertical-align: middle;
-  line-height: 1.5;
-}
-
-/* User message inline code */
-.prose-invert code:not([class*="language-"]) {
+/* Improved inline code styling */
+.prose code:not([class*="language-"]) {
   color: white !important;
   background-color: rgba(75, 85, 99, 0.8) !important;
+  padding: 0.2em 0.4em !important;
+  border-radius: 0.25rem !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  font-size: 0.875em !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  white-space: nowrap !important;
 }
 
-/* Assistant message inline code */
-.prose code:not([class*="language-"]) {
-  color: #1a202c !important;
-  background-color: #e5e7eb !important;
+/* Assistant message container spacing */
+.justify-start > div {
+  margin-top: 1rem !important;
+}
+
+/* User message container spacing */
+.justify-end > div {
+  margin-top: 2rem !important;
 }
 
 /* Improved scrollbars for code blocks */
