@@ -171,15 +171,6 @@ export default function ChatApp() {
         method: 'POST',
         body: JSON.stringify(requestBody),
       });
-    const url = `${config.API_URL}/chat`;
-    console.log('Sending HTTP request to:', url);
-    console.log('Request body:', requestBody);
-    
-    try {
-      const response = await fetchWithCreds(url, {
-        method: 'POST',
-        body: JSON.stringify(requestBody),
-      });
 
       console.log('Response status:', response.status);
       const data = await response.json();
