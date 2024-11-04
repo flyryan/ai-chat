@@ -1,5 +1,6 @@
 from typing import Optional
-from pydantic import BaseSettings, HttpUrl, validator
+from pydantic_settings import BaseSettings
+from pydantic import HttpUrl, validator
 import os
 from functools import lru_cache
 
