@@ -15,15 +15,29 @@ interface Message {
 
 const MessageContent: React.FC<{ content: string }> = ({ content }) => {
   const formatText = (text: string): string => {
+    // Handle multiline code blocks with triple backticks
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, 
+      '<pre class="bg-gray-800 text-gray-200 p-4 rounded-lg my-2 overflow-x-auto"><code>$2</code></pre>'
+    );
+    
+    // Handle inline code with single backticks
+    text = text.replace(/`([^`]+)`/g, 
+      '<code class="bg-gray-800 text-gray-200 px-2 py-1 rounded">$1</code>'
+    );
+    
+    // Handle bold and italic
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-800 text-gray-200 px-1 rounded">$1</code>');
+    
+    // Convert newlines to <br> tags
+    text = text.replace(/\n/g, '<br>');
+    
     return text;
   };
 
   return (
     <div 
-      className="prose prose-invert max-w-none"
+      className="prose prose-invert max-w-none whitespace-pre-wrap"
       dangerouslySetInnerHTML={{ __html: formatText(content) }}
     />
   );
