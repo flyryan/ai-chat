@@ -81,6 +81,7 @@ class Settings(BaseSettings):
         logger.info(f"Environment: {self.environment}")
         logger.info(f"CORS Origins: {self.cors_origins}")
 
+# Create settings instance
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance"""
@@ -91,14 +92,5 @@ def get_settings() -> Settings:
         logger.error(f"Error loading settings: {str(e)}")
         raise
 
-# Create settings instance - moved to end of file
+# Initialize settings once at module level
 settings = get_settings()
-
-# Export settings at module level
-__all__ = ['settings', 'Settings', 'get_settings']
-
-if __name__ == "__main__":
-    logger.info("Testing configuration loading...")
-    s = get_settings()
-    logger.info(f"Successfully loaded configuration")
-    logger.info(f"CORS Origins: {s.cors_origins}")
