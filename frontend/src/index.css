@@ -1,3 +1,22 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.inline-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875em;
+  background-color: rgb(45, 45, 45);
+  border-radius: 0.25rem;
+}
+
+.code-block-wrapper pre {
+  margin: 0 !important;
+  padding: 1rem !important;
+  background-color: transparent !important;
+}
+
+.code-block-wrapper code {
+  background-color: transparent !important;
+  padding: 0 !important;
+  font-size: 0.875em !important;
+}

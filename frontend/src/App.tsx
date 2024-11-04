@@ -20,7 +20,7 @@ interface Message {
   timestamp: string;
 }
 
-const MessageContent: React.FC<{ content: string }> = ({ content }) => {
+const MessageContent: React.FC<{ content: string; role: Message['role'] }> = ({ content, role }) => {
   useEffect(() => {
     Prism.highlightAll();
   }, [content]);
@@ -44,9 +44,15 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
     headerPrefix: 'heading-'
   });
 
+  const messageClasses = `prose max-w-none ${
+    role === 'user' 
+      ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
+      : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900'
+  }`;
+
   return (
     <div
-      className="prose prose-invert max-w-none prose-p:text-gray-100 prose-headings:text-white prose-strong:text-white prose-code:text-gray-100"
+      className={messageClasses}
       dangerouslySetInnerHTML={{ __html: marked(content) }}
     />
   );
@@ -377,14 +383,7 @@ export default function ChatApp() {
                   : 'bg-white text-gray-900'
               }`}
             >
-              <div
-                className={`prose max-w-none ${
-                  message.role === 'user' 
-                    ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
-                    : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-gray-900'
-                }`}
-                dangerouslySetInnerHTML={{ __html: marked(message.content) }}
-              />
+              <MessageContent content={message.content} role={message.role} />
               <div className={`text-xs mt-2 text-opacity-75 ${
                 message.role === 'user' ? 'text-gray-200' : 'text-gray-500'
               }`}>
