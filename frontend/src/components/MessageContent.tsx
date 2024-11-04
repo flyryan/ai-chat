@@ -62,10 +62,10 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }
   };
 
-  // Modified inline code rendering to handle backticks and ensure consistent styling
+  // Modified inline code rendering with proper backtick handling
   renderer.codespan = (code) => {
-    // Remove backticks if they're at the start and end of the code
-    const cleanCode = code.replace(/^`|`$/g, '');
+    // Strip any remaining backticks from the content
+    const cleanCode = code.replace(/`/g, '');
     return `<code class="bg-opacity-20 rounded px-1.5 py-0.5 font-mono text-sm ${
       role === 'user' 
         ? 'bg-gray-700 text-white' 
@@ -73,12 +73,24 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     }">${cleanCode}</code>`;
   };
 
+  // Pre-process the content to handle inline code properly
+  const processContent = (rawContent: string) => {
+    // Handle inline code with single backticks
+    return rawContent.replace(/`([^`]+)`/g, (_, code) => `\`${code.trim()}\``);
+  };
+
   marked.setOptions({
     renderer,
     gfm: true,
     breaks: true,
     headerIds: false,
-    langPrefix: 'language-'
+    langPrefix: 'language-',
+    // Add custom processing for inline code
+    walkTokens: (token: any) => {
+      if (token.type === 'codespan') {
+        token.text = token.text.replace(/`/g, '');
+      }
+    }
   });
 
   const messageClasses = `prose max-w-none ${
@@ -90,7 +102,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   return (
     <div 
       className={messageClasses}
-      dangerouslySetInnerHTML={{ __html: marked(content) }}
+      dangerouslySetInnerHTML={{ __html: marked(processContent(content)) }}
     />
   );
 };
