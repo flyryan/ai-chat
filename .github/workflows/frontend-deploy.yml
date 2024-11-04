@@ -31,12 +31,6 @@ jobs:
         cd frontend
         npm install
         
-    - name: Debug node_modules
-      run: |
-        cd frontend
-        ls -la node_modules
-        ls -la node_modules/.bin
-        
     - name: Build
       run: |
         cd frontend

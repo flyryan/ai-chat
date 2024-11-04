@@ -77,14 +77,14 @@ jobs:
         publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
         package: backend
 
-    - name: Check application logs
-      uses: Azure/cli@v1
-      with:
-        inlineScript: |
-          echo "Fetching application logs..."
-          az webapp log tail \
-            --name ${{ secrets.WEBAPP_NAME }} \
-            --resource-group ${{ secrets.RESOURCE_GROUP }}
+    # - name: Check application logs
+    #   uses: Azure/cli@v1
+    #   with:
+    #     inlineScript: |
+    #       echo "Fetching application logs..."
+    #       az webapp log tail \
+    #         --name ${{ secrets.WEBAPP_NAME }} \
+    #         --resource-group ${{ secrets.RESOURCE_GROUP }}
 
     - name: Verify health endpoint
       run: |
