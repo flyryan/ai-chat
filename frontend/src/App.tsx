@@ -34,7 +34,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
       Prism.languages[validLanguage] || Prism.languages.text,
       validLanguage
     );
-    return `<pre class="bg-gray-800 rounded-lg my-2"><code class="language-${validLanguage}">${highlighted}</code></pre>`;
+    return `<pre class="bg-gray-900 rounded-lg p-4 my-3"><code class="language-${validLanguage}">${highlighted}</code></pre>`;
   };
 
   marked.setOptions({
@@ -47,7 +47,7 @@ const MessageContent: React.FC<{ content: string }> = ({ content }) => {
 
   return (
     <div
-      className="prose prose-invert max-w-none"
+      className="prose prose-invert max-w-none prose-p:text-gray-100 prose-headings:text-white prose-strong:text-white prose-code:text-gray-100"
       dangerouslySetInnerHTML={{ __html: marked(content) }}
     />
   );
@@ -400,14 +400,23 @@ export default function ChatApp() {
             }`}
           >
             <div
-              className={`max-w-3xl rounded-lg p-4 ${
+              className={`max-w-3xl rounded-lg p-6 shadow-lg ${
                 message.role === 'user'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white shadow-sm'
+                  : 'bg-white text-gray-900'
               }`}
             >
-              <MessageContent content={message.content} />
-              <div className="text-xs mt-2 text-gray-500">
+              <div
+                className={`prose max-w-none ${
+                  message.role === 'user' 
+                    ? 'prose-invert prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white' 
+                    : 'prose-p:text-gray-900 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-gray-900'
+                }`}
+                dangerouslySetInnerHTML={{ __html: marked(content) }}
+              />
+              <div className={`text-xs mt-2 text-opacity-75 ${
+                message.role === 'user' ? 'text-gray-200' : 'text-gray-500'
+              }`}>
                 {new Date(message.timestamp).toLocaleTimeString()}
               </div>
             </div>
