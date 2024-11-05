@@ -55,12 +55,18 @@ The application is designed to be cross-platform and can be deployed on various 
 
 ### Docker Deployment
 
-1. Build the image:
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/flyryan/ai-chat.git
+   cd ai-chat
+   ```
+
+2. **Build the Image**:
    ```bash
    docker build -t ai-chat .
    ```
 
-2. Run the container:
+3. **Run the Container**:
    ```bash
    docker run -p 8000:8000 \
      -e OPENAI_API_KEY=your-key \
@@ -69,7 +75,8 @@ The application is designed to be cross-platform and can be deployed on various 
      ai-chat
    ```
 
-3. Access the application at http://localhost:8000
+4. **Access the Application**:
+   Open your browser and navigate to http://localhost:8000
 
 ### Local Deployment
 
