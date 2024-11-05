@@ -27,6 +27,30 @@ Easily customize various aspects of the application, including:
 - **UI Elements and Behavior**: Personalize the user interface and interaction patterns to suit your needs.
 - **CORS and Security Settings**: Configure Cross-Origin Resource Sharing (CORS) and other security settings.
 
+## How It Works
+
+### Languages and Technologies
+
+- **Frontend**: Built with React.
+- **Backend**: Developed using FastAPI with Python 3.9+.
+- **WebSockets**: Utilized for real-time communication between the frontend and backend.
+- **Markdown Rendering**: Supports full Markdown rendering with syntax highlighting for code blocks.
+
+### Architecture
+
+The application follows a client-server architecture:
+
+- **Frontend**: The React-based frontend communicates with the backend via HTTP and WebSocket protocols. It provides a clean and responsive user interface for interacting with the AI model.
+- **Backend**: The FastAPI-based backend handles API requests, processes data, and communicates with the OpenAI-compatible endpoints. It also manages WebSocket connections for real-time interactions.
+
+### Cross-Platform Nature
+
+The application is designed to be cross-platform and can be deployed on various environments, including:
+
+- **Local Machines**: Easily set up and run the application on your local development environment.
+- **Cloud Platforms**: Deployable on cloud platforms such as Azure, AWS, and Google Cloud.
+- **Containers**: Can be containerized using Docker for consistent deployment across different environments.
+
 ## Installation Guides
 
 ### Local Deployment
@@ -218,4 +242,3 @@ This section provides a step-by-step guide to deploying the application to Azure
 ## Disclaimer
 
 This application is unstable and in the early stages of development. Features and configurations are subject to change without notice.
-```
