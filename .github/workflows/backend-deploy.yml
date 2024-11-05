@@ -2,7 +2,7 @@ name: Deploy Backend to Azure App Service
 
 on:
   push:
-    branches: [ main, release-prep ]
+    branches: [ main ]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-deploy.yml'
@@ -55,7 +55,7 @@ jobs:
           az webapp cors add \
             --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
-            --allowed-origins "https://*.azurestaticapps.net" "https://salmon-grass-06d76a510.5.azurestaticapps.net"
+            --allowed-origins "https://*.azurestaticapps.net" "${{ secrets.FRONTEND_URL }}"
 
           # Update app settings
           az webapp config appsettings set \

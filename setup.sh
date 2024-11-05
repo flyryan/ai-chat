@@ -15,16 +15,17 @@ if [ ! -f "./backend/.env" ]; then
     echo -e "${RED}Please update backend/.env with your configuration values${NC}"
 fi
 
-# Create frontend environment files
+# Create frontend development environment file
 if [ ! -f "./frontend/.env.development" ]; then
     echo -e "${GREEN}Creating frontend development environment file...${NC}"
     cp ./frontend/.env.example ./frontend/.env.development
 fi
 
+# Create frontend production environment file
 if [ ! -f "./frontend/.env.production" ]; then
     echo -e "${GREEN}Creating frontend production environment file...${NC}"
     cp ./frontend/.env.example ./frontend/.env.production
-    echo -e "${RED}Please update frontend/.env.production with your production values${NC}"
+    echo -e "${RED}Please update frontend/.env.production with your configuration values${NC}"
 fi
 
 # Setup Python virtual environment
