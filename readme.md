@@ -53,6 +53,24 @@ The application is designed to be cross-platform and can be deployed on various 
 
 ## Installation Guides
 
+### Docker Deployment
+
+1. Build the image:
+   ```bash
+   docker build -t ai-chat .
+   ```
+
+2. Run the container:
+   ```bash
+   docker run -p 8000:8000 \
+     -e OPENAI_API_KEY=your-key \
+     -e OPENAI_API_BASE=your-endpoint \
+     -e OPENAI_DEPLOYMENT_NAME=your-model \
+     ai-chat
+   ```
+
+3. Access the application at http://localhost:8000
+
 ### Local Deployment
 
 1. **Clone the Repository**:
@@ -238,6 +256,36 @@ This section provides a step-by-step guide to deploying the application to Azure
 
    - Visit your frontend URL to test the application.
    - Ensure that the chat functionality works as expected.
+
+### Docker Deployment
+
+1. Build the image:
+```bash
+docker build -t ai-chat .
+```
+
+2. Run the container:
+```bash
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=your-key \
+  -e OPENAI_API_BASE=your-endpoint \
+  -e OPENAI_DEPLOYMENT_NAME=your-model \
+  ai-chat
+```
+
+3. Access the application at http://localhost:8000
+
+3. Add Docker build to setup.sh:
+
+```bash
+# Add to setup.sh after environment file creation
+if command -v docker &> /dev/null; then
+    echo -e "${BLUE}Docker detected - building container...${NC}"
+    docker build -t ai-chat .
+    echo -e "${GREEN}Container built! Run with:${NC}"
+    echo "docker run -p 8000:8000 -e OPENAI_API_KEY=your-key -e OPENAI_API_BASE=your-endpoint -e OPENAI_DEPLOYMENT_NAME=your-model ai-chat"
+fi
+```
 
 ## Disclaimer
 
