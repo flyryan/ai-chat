@@ -176,7 +176,7 @@ async def monitor_stream(stream):
         logger.info(f"Stream metrics: {metrics.get_metrics()}")
 
 async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: int, temperature: float, stream: bool = False):
-    """Generate chat completion with robust stream handling"""
+    """Generate chat completion with robust stream handling and proper vector search"""
     try:
         completion_kwargs = {
             "model": settings.openai_deployment_name,
@@ -190,32 +190,43 @@ async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: i
         }
         
         if settings.vector_search_enabled:
-            completion_kwargs["extra_body"] = {
-                "dataSources": [{
-                    "type": "azure_search",
-                    "parameters": {
-                        "endpoint": str(settings.vector_search_endpoint),
-                        "key": settings.vector_search_key,
-                        "indexName": settings.vector_search_index,
-                        "semanticConfiguration": "azureml-default",
-                        "queryType": "vector_simple_hybrid",
-                        "inScope": True,
-                        "roleInformation": settings.system_prompt,
-                        "strictness": 3,
-                        "topNDocuments": 5,
-                        "embeddingEndpoint": f"{settings.openai_api_base}/openai/deployments/text-embedding-ada-002/embeddings?api-version=2023-07-01-preview",
-                        "embeddingKey": settings.openai_api_key
-                    }
-                }]
-            }
-            logger.info("Vector search configuration added to completion request")
+            # Validate required settings
+            if not all([
+                settings.vector_search_endpoint,
+                settings.vector_search_key,
+                settings.vector_search_index
+            ]):
+                logger.error("Vector search is enabled but required settings are missing")
+                raise ValueError("Incomplete vector search configuration")
+
+            # Configure vector search with explicit data source
+            completion_kwargs["dataSources"] = [{
+                "type": "azure_search",
+                "parameters": {
+                    "endpoint": str(settings.vector_search_endpoint),
+                    "key": settings.vector_search_key,
+                    "indexName": settings.vector_search_index,
+                    "semanticConfiguration": settings.vector_search_semantic_config,
+                    "queryType": "vector_simple_hybrid",
+                    "inScope": True,
+                    "roleInformation": settings.system_prompt,
+                    "strictness": 3,
+                    "topNDocuments": 5,
+                    "filter": "",  # Add any filtering conditions if needed
+                    "embeddingDeploymentName": settings.vector_search_embedding_deployment
+                }
+            }]
+            
+            logger.info(f"Vector search enabled with index: {settings.vector_search_index}")
+            logger.debug(f"Vector search configuration: {completion_kwargs['dataSources']}")
         
         logger.debug(f"Calling OpenAI with parameters: {completion_kwargs}")
         
         if stream:
             async def process_stream():
                 try:
-                    for chunk in client.chat.completions.create(**completion_kwargs):
+                    stream_response = client.chat.completions.create(**completion_kwargs)
+                    async for chunk in stream_response:
                         yield chunk
                 except Exception as e:
                     logger.error(f"Error in stream processing: {str(e)}")
