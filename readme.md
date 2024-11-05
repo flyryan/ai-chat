@@ -49,6 +49,7 @@ Easily customize various aspects of the application, including:
    OPENAI_API_BASE=your-endpoint
    OPENAI_API_KEY=your-key
    OPENAI_DEPLOYMENT_NAME=your-model
+   # The deployment name will likely be gpt-4o (or o1 or whatever is new) but could be different if you deployed your own model on Azure or are pointing to an external model.
    ```
 
    Frontend ([frontend/.env.development](frontend/.env.development)):
