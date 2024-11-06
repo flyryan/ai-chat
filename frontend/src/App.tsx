@@ -199,7 +199,17 @@ class WebSocketManager {
   }
 
   private handleMessage(event: MessageEvent) {
-    this.options.onMessage(event.data);
+    try {
+      // Try to parse as JSON first
+      const data = JSON.parse(event.data);
+      
+      // If parsing succeeds, use the response property
+      const content = typeof data === 'object' && data.response ? data.response : data;
+      this.options.onMessage(content);
+    } catch (e) {
+      // If JSON parsing fails, treat it as raw text
+      this.options.onMessage(event.data);
+    }
   }
 
   send(message: string): boolean {
@@ -280,12 +290,14 @@ export default function ChatApp() {
             const newMessages = [...prev];
             if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
               const lastMessage = { ...newMessages[newMessages.length - 1] };
-              lastMessage.content += data;
+              // If data is an object with a response property, use that
+              const content = typeof data === 'object' ? data.response || data : data;
+              lastMessage.content += content;
               newMessages[newMessages.length - 1] = lastMessage;
             } else {
               newMessages.push({
                 role: 'assistant',
-                content: data,
+                content: typeof data === 'object' ? data.response || data : data,
                 timestamp: new Date().toISOString()
               });
             }
