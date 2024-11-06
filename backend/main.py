@@ -425,6 +425,15 @@ class ConnectionManager:
 # Initialize the connection manager
 manager = ConnectionManager()
 
+async def stream_generator(stream):
+    try:
+        async for chunk in stream:
+            if chunk and chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        logger.error(f"Error in stream_generator: {str(e)}")
+        raise
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time chat functionality with proper stream handling"""
@@ -470,20 +479,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         stream=True
                     )
                     
-                    async for chunk in stream_generator(stream):
-                        if not chunk or not chunk.choices:
-                            logger.debug("Received empty chunk, skipping")
-                            continue
-                            
-                        try:
-                            delta = chunk.choices[0].delta
-                            if hasattr(delta, 'content') and delta.content:
-                                logger.debug(f"Sending chunk: {delta.content[:50]}...")
-                                await websocket.send_text(delta.content)
-                        except (AttributeError, IndexError) as e:
-                            logger.debug(f"Skipping invalid chunk: {e}")
-                            continue
-                            
+                    async for content in stream_generator(stream):
+                        await websocket.send_text(content)
+                    
                 except Exception as e:
                     error_msg = f"OpenAI API error: {str(e)}"
                     logger.error(error_msg)
@@ -503,11 +501,6 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(e)
     finally:
         await manager.disconnect(websocket)
-
-async def stream_generator(stream):
-    """Helper function to convert sync stream to async"""
-    for chunk in stream:
-        yield chunk
 
 if __name__ == "__main__":
     import uvicorn
