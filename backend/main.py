@@ -223,15 +223,11 @@ async def generate_chat_completion(messages: List[Dict[str, str]], max_tokens: i
         logger.debug(f"Calling OpenAI with parameters: {completion_kwargs}")
         
         if stream:
-            async def process_stream():
-                try:
-                    stream_response = client.chat.completions.create(**completion_kwargs)
-                    async for chunk in stream_response:
-                        yield chunk
-                except Exception as e:
-                    logger.error(f"Error in stream processing: {str(e)}")
-                    raise
-            return monitor_stream(process_stream())
+            async def stream_generator():
+                stream_response = client.chat.completions.create(**completion_kwargs)
+                for chunk in stream_response:
+                    yield chunk
+            return stream_generator()
         else:
             completion = client.chat.completions.create(**completion_kwargs)
             return completion
@@ -474,7 +470,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         stream=True
                     )
                     
-                    async for chunk in stream:
+                    async for chunk in stream_generator(stream):
                         if not chunk or not chunk.choices:
                             logger.debug("Received empty chunk, skipping")
                             continue
@@ -507,6 +503,11 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(e)
     finally:
         await manager.disconnect(websocket)
+
+async def stream_generator(stream):
+    """Helper function to convert sync stream to async"""
+    for chunk in stream:
+        yield chunk
 
 if __name__ == "__main__":
     import uvicorn
